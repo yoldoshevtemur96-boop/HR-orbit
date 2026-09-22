@@ -1,7 +1,6 @@
-// Test uchun boshlang'ich ma'lumotlar: bitta tashkilot, tashkiliy tuzilma
-// (Xodim → Bo'lim boshlig'i → Rahbar), va "Mehnat ta'tiliga chiqish arizasi"
-// shablonining to'liq zanjiri — aynan foydalanuvchi tasvirlagan senariy bo'yicha:
-//   Xodim (boshlaydi) → Bo'lim boshlig'i → Kadrlar → Yuridik (Yurist) → Rahbar
+// Test uchun boshlang'ich ma'lumotlar: bitta tashkilot, to'liq Core HR
+// tuzilmasi (bo'lim, filial, lavozim, xodimlar + tashkiliy ierarxiya),
+// va "Mehnat ta'tiliga chiqish arizasi" shablonining to'liq zanjiri.
 import bcrypt from 'bcryptjs';
 import { PrismaClient } from '@prisma/client';
 
@@ -16,6 +15,82 @@ async function main() {
     data: { name: 'Demo Kompaniya', slug: 'demo', plan: 'trial' },
   });
 
+  // --- Tashkiliy tuzilma: bo'lim, filial, lavozimlar -----------------------
+
+  const department = await prisma.department.create({
+    data: { organizationId: org.id, name: "IT bo'limi", code: 'IT' },
+  });
+
+  const branch = await prisma.branch.create({
+    data: {
+      organizationId: org.id,
+      name: 'Toshkent bosh ofis',
+      code: 'TSH-HQ',
+      region: 'Toshkent',
+      address: 'Toshkent sh., Amir Temur ko\'chasi',
+    },
+  });
+
+  const ceoPosition = await prisma.position.create({
+    data: {
+      organizationId: org.id,
+      departmentId: department.id,
+      branchId: branch.id,
+      name: 'Bosh direktor',
+      code: 'CEO',
+      grade: 'C-Level',
+      approvedHeadcount: 1,
+    },
+  });
+
+  const hrHeadPosition = await prisma.position.create({
+    data: {
+      organizationId: org.id,
+      departmentId: department.id,
+      branchId: branch.id,
+      name: "Kadrlar bo'limi boshlig'i",
+      code: 'HR-HEAD',
+      grade: 'Boshliq',
+      approvedHeadcount: 1,
+    },
+  });
+
+  const legalPosition = await prisma.position.create({
+    data: {
+      organizationId: org.id,
+      departmentId: department.id,
+      branchId: branch.id,
+      name: 'Yurist',
+      code: 'LEGAL-1',
+      grade: 'Mutaxassis',
+      approvedHeadcount: 1,
+    },
+  });
+
+  const itHeadPosition = await prisma.position.create({
+    data: {
+      organizationId: org.id,
+      departmentId: department.id,
+      branchId: branch.id,
+      name: "IT bo'limi boshlig'i",
+      code: 'IT-HEAD',
+      grade: 'Boshliq',
+      approvedHeadcount: 1,
+    },
+  });
+
+  const devPosition = await prisma.position.create({
+    data: {
+      organizationId: org.id,
+      departmentId: department.id,
+      branchId: branch.id,
+      name: 'Backend dasturchi',
+      code: 'BE-DEV',
+      grade: 'Grade 1',
+      approvedHeadcount: 3,
+    },
+  });
+
   // --- Foydalanuvchilar va xodimlar ---------------------------------------
 
   const ceoUser = await prisma.user.create({
@@ -24,7 +99,21 @@ async function main() {
       email: 'ceo@demo.uz',
       passwordHash,
       role: 'SUPER_ADMIN',
-      employee: { create: { organizationId: org.id, fullName: 'Aziz Rahbarov', position: 'Bosh direktor' } },
+      employee: {
+        create: {
+          organizationId: org.id,
+          employeeCode: 'EMP-00001',
+          firstName: 'Aziz',
+          lastName: 'Rahbarov',
+          fullName: 'Aziz Rahbarov',
+          workEmail: 'ceo@demo.uz',
+          positionId: ceoPosition.id,
+          departmentId: department.id,
+          branchId: branch.id,
+          status: 'ACTIVE',
+          employmentType: 'FULL_TIME',
+        },
+      },
     },
     include: { employee: true },
   });
@@ -35,7 +124,22 @@ async function main() {
       email: 'hr@demo.uz',
       passwordHash,
       role: 'HR_MANAGER',
-      employee: { create: { organizationId: org.id, fullName: 'Malika Kadrova', position: 'Kadrlar bo\'limi boshlig\'i' } },
+      employee: {
+        create: {
+          organizationId: org.id,
+          employeeCode: 'EMP-00002',
+          firstName: 'Malika',
+          lastName: 'Kadrova',
+          fullName: 'Malika Kadrova',
+          workEmail: 'hr@demo.uz',
+          positionId: hrHeadPosition.id,
+          departmentId: department.id,
+          branchId: branch.id,
+          managerId: ceoUser.employee!.id,
+          status: 'ACTIVE',
+          employmentType: 'FULL_TIME',
+        },
+      },
     },
     include: { employee: true },
   });
@@ -46,7 +150,22 @@ async function main() {
       email: 'legal@demo.uz',
       passwordHash,
       role: 'EMPLOYEE',
-      employee: { create: { organizationId: org.id, fullName: 'Jasur Yuristov', position: 'Yurist' } },
+      employee: {
+        create: {
+          organizationId: org.id,
+          employeeCode: 'EMP-00003',
+          firstName: 'Jasur',
+          lastName: 'Yuristov',
+          fullName: 'Jasur Yuristov',
+          workEmail: 'legal@demo.uz',
+          positionId: legalPosition.id,
+          departmentId: department.id,
+          branchId: branch.id,
+          managerId: ceoUser.employee!.id,
+          status: 'ACTIVE',
+          employmentType: 'FULL_TIME',
+        },
+      },
     },
     include: { employee: true },
   });
@@ -58,14 +177,33 @@ async function main() {
       passwordHash,
       role: 'DEPARTMENT_HEAD',
       employee: {
-        create: { organizationId: org.id, fullName: 'Olim Boshliqov', position: 'IT bo\'limi boshlig\'i' },
+        create: {
+          organizationId: org.id,
+          employeeCode: 'EMP-00004',
+          firstName: 'Olim',
+          lastName: 'Boshliqov',
+          fullName: 'Olim Boshliqov',
+          workEmail: 'boshliq@demo.uz',
+          positionId: itHeadPosition.id,
+          departmentId: department.id,
+          branchId: branch.id,
+          managerId: ceoUser.employee!.id,
+          status: 'ACTIVE',
+          employmentType: 'FULL_TIME',
+        },
       },
     },
     include: { employee: true },
   });
 
-  const department = await prisma.department.create({
-    data: { organizationId: org.id, name: 'IT bo\'limi', headEmployeeId: deptHeadUser.employee!.id },
+  // Bo'lim va filial rahbarlarini bog'lash
+  await prisma.department.update({
+    where: { id: department.id },
+    data: { headEmployeeId: deptHeadUser.employee!.id },
+  });
+  await prisma.branch.update({
+    where: { id: branch.id },
+    data: { managerId: ceoUser.employee!.id },
   });
 
   const employeeUser = await prisma.user.create({
@@ -77,15 +215,48 @@ async function main() {
       employee: {
         create: {
           organizationId: org.id,
+          employeeCode: 'EMP-00005',
+          firstName: 'Bekzod',
+          lastName: 'Dasturchi',
           fullName: 'Bekzod Dasturchi',
-          position: 'Backend dasturchi',
+          workEmail: 'xodim@demo.uz',
+          positionId: devPosition.id,
           departmentId: department.id,
+          branchId: branch.id,
           managerId: deptHeadUser.employee!.id, // bevosita rahbari — DIRECT_MANAGER shu orqali topiladi
+          status: 'ACTIVE',
+          employmentType: 'FULL_TIME',
         },
       },
     },
     include: { employee: true },
   });
+
+  // --- Har bir xodim uchun boshlang'ich EmploymentRecord (tarix) ----------
+
+  const allEmployees = [
+    { user: ceoUser, positionId: ceoPosition.id, managerId: null },
+    { user: hrUser, positionId: hrHeadPosition.id, managerId: ceoUser.employee!.id },
+    { user: legalUser, positionId: legalPosition.id, managerId: ceoUser.employee!.id },
+    { user: deptHeadUser, positionId: itHeadPosition.id, managerId: ceoUser.employee!.id },
+    { user: employeeUser, positionId: devPosition.id, managerId: deptHeadUser.employee!.id },
+  ];
+
+  for (const { user, positionId, managerId } of allEmployees) {
+    await prisma.employmentRecord.create({
+      data: {
+        organizationId: org.id,
+        employeeId: user.employee!.id,
+        positionId,
+        departmentId: department.id,
+        branchId: branch.id,
+        managerId,
+        startDate: user.employee!.hiredAt,
+        endDate: null,
+        reason: "Boshlang'ich ma'lumot",
+      },
+    });
+  }
 
   // --- Workflow shabloni: Mehnat ta'tiliga chiqish arizasi ----------------
 

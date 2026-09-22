@@ -25,7 +25,12 @@ model Organization {
 
   users             User[]
   departments       Department[]
+  branches          Branch[]
+  positions         Position[]
   employees         Employee[]
+  employmentRecords EmploymentRecord[]
+  employeeEducations EmployeeEducation[]
+  employeeDocuments EmployeeDocument[]
   workflowTemplates WorkflowTemplate[]
   workflowInstances WorkflowInstance[]
   auditLogs         AuditLog[]
@@ -42,6 +47,7 @@ model Organization {
 enum RoleName {
   SUPER_ADMIN // tenant ichidagi to'liq huquq
   HR_MANAGER
+  HR_SPECIALIST // Core HR: to'liq ko'rish + cheklangan tahrirlash (employment o'zgartira olmaydi)
   RECRUITER
   DEPARTMENT_HEAD
   EMPLOYEE
@@ -60,9 +66,11 @@ model User {
   organization Organization @relation(fields: [organizationId], references: [id], onDelete: Cascade)
   employee     Employee?
 
-  initiatedWorkflows WorkflowInstance[]     @relation("WorkflowInitiator")
-  stepActions        WorkflowStepAction[]
-  auditLogs          AuditLog[]
+  initiatedWorkflows      WorkflowInstance[]   @relation("WorkflowInitiator")
+  stepActions             WorkflowStepAction[]
+  auditLogs               AuditLog[]
+  employmentRecordChanges EmploymentRecord[]   @relation("EmploymentRecordChangedBy")
+  uploadedDocuments       EmployeeDocument[]   @relation("DocumentUploadedBy")
 
   @@unique([organizationId, email])
   @@index([organizationId])
@@ -70,57 +78,248 @@ model User {
 }
 
 // ==========================================================================
-// CORE HR
+// CORE HR — spravochniklar (Department / Branch / Position)
 // ==========================================================================
 
+enum OrgUnitStatus {
+  ACTIVE
+  ARCHIVED
+}
+
 model Department {
-  id             String   @id @default(cuid())
+  id             String        @id @default(cuid())
   organizationId String
   name           String
+  code           String
   parentId       String? // tashkiliy ierarxiya uchun o'z-o'ziga bog'lanish
-  headEmployeeId String? @unique // bo'lim boshlig'i
+  headEmployeeId String?       @unique // bo'lim boshlig'i
+  status         OrgUnitStatus @default(ACTIVE)
+  archivedAt     DateTime?
+  createdAt      DateTime      @default(now())
+  updatedAt      DateTime      @updatedAt
 
   organization Organization @relation(fields: [organizationId], references: [id], onDelete: Cascade)
   parent       Department?  @relation("DeptHierarchy", fields: [parentId], references: [id])
   children     Department[] @relation("DeptHierarchy")
   employees    Employee[]   @relation("DeptEmployees")
   headEmployee Employee?    @relation("DeptHead", fields: [headEmployeeId], references: [id])
+  positions    Position[]
+  employmentRecords EmploymentRecord[]
 
+  @@unique([organizationId, code])
   @@index([organizationId])
   @@map("departments")
 }
 
+model Branch {
+  id             String        @id @default(cuid())
+  organizationId String
+  name           String
+  code           String
+  region         String?
+  address        String?
+  managerId      String?       @unique // filial rahbari (Employee)
+  status         OrgUnitStatus @default(ACTIVE)
+  archivedAt     DateTime?
+  createdAt      DateTime      @default(now())
+  updatedAt      DateTime      @updatedAt
+
+  organization Organization @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+  manager      Employee?    @relation("BranchManager", fields: [managerId], references: [id])
+  employees    Employee[]   @relation("BranchEmployees")
+  positions    Position[]
+  employmentRecords EmploymentRecord[]
+
+  @@unique([organizationId, code])
+  @@index([organizationId])
+  @@map("branches")
+}
+
+model Position {
+  id                String        @id @default(cuid())
+  organizationId    String
+  departmentId      String
+  branchId          String?
+  name              String
+  code              String
+  grade             String?
+  approvedHeadcount Int           @default(1)
+  status            OrgUnitStatus @default(ACTIVE)
+  archivedAt        DateTime?
+  createdAt         DateTime      @default(now())
+  updatedAt         DateTime      @updatedAt
+
+  organization Organization @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+  department   Department   @relation(fields: [departmentId], references: [id])
+  branch       Branch?      @relation(fields: [branchId], references: [id])
+  employees    Employee[]   @relation("PositionEmployees")
+  employmentRecords EmploymentRecord[]
+
+  @@unique([organizationId, code])
+  @@index([organizationId])
+  @@index([departmentId])
+  @@map("positions")
+}
+
+// ==========================================================================
+// CORE HR — Employee (yagona haqiqat manbai)
+// ==========================================================================
+
 enum EmploymentStatus {
   ACTIVE
+  PROBATION
   ON_LEAVE
+  SUSPENDED
   TERMINATED
+  ARCHIVED
+}
+
+enum EmploymentType {
+  FULL_TIME
+  PART_TIME
+  TEMPORARY
+  CONTRACT
+  REMOTE
+  HYBRID
+}
+
+enum Gender {
+  MALE
+  FEMALE
 }
 
 model Employee {
-  id             String           @id @default(cuid())
+  id             String  @id @default(cuid())
   organizationId String
-  userId         String?          @unique
-  departmentId   String?
-  managerId      String? // bevosita rahbar — workflow marshrutlash uchun muhim
-  fullName       String
-  position       String
-  status         EmploymentStatus @default(ACTIVE)
-  hiredAt        DateTime         @default(now())
-  createdAt      DateTime         @default(now())
-  updatedAt      DateTime         @updatedAt
+  userId         String? @unique
+  employeeCode   String // inson o'qiydigan ID, masalan "EMP-00001"
+
+  // Shaxsiy ma'lumotlar
+  firstName      String
+  lastName       String
+  middleName     String?
+  fullName       String // firstName+lastName+middleName'dan generatsiya — tezkor qidiruv/sort uchun denormalized
+  dateOfBirth    DateTime?
+  gender         Gender?
+  pinfl          String? // restricted — faqat SUPER_ADMIN/HR_MANAGER/HR_SPECIALIST ko'radi
+  passportNumber String? // restricted
+
+  // Aloqa
+  personalPhone         String?
+  workPhone             String?
+  personalEmail         String?
+  workEmail             String?
+  address               String?
+  emergencyContactName  String?
+  emergencyContactPhone String?
+
+  // Employment — joriy holat (denormalized, tezkor so'rov uchun; to'liq tarix EmploymentRecord'da)
+  departmentId      String?
+  branchId          String?
+  positionId        String?
+  managerId         String? // bevosita rahbar — workflow marshrutlash uchun ham muhim
+  status            EmploymentStatus @default(ACTIVE)
+  employmentType    EmploymentType?
+  contractNumber    String?
+  contractStartDate DateTime?
+  contractEndDate   DateTime?
+  workSchedule      String?
+  workLocation      String?
+
+  hiredAt   DateTime @default(now())
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
 
   organization Organization @relation(fields: [organizationId], references: [id], onDelete: Cascade)
-  user         User?         @relation(fields: [userId], references: [id])
-  department   Department?   @relation("DeptEmployees", fields: [departmentId], references: [id])
-  manager      Employee?     @relation("EmployeeManager", fields: [managerId], references: [id])
-  directReports Employee[]   @relation("EmployeeManager")
-  headOfDept   Department?   @relation("DeptHead")
+  user         User?        @relation(fields: [userId], references: [id])
+  department   Department?  @relation("DeptEmployees", fields: [departmentId], references: [id])
+  branch       Branch?      @relation("BranchEmployees", fields: [branchId], references: [id])
+  position     Position?    @relation("PositionEmployees", fields: [positionId], references: [id])
+  manager      Employee?    @relation("EmployeeManager", fields: [managerId], references: [id])
+  directReports Employee[]  @relation("EmployeeManager")
+  headOfDept   Department?  @relation("DeptHead")
+  branchManagerOf Branch?   @relation("BranchManager")
+
+  educations        EmployeeEducation[]
+  documents         EmployeeDocument[]
+  employmentHistory EmploymentRecord[]  @relation("EmploymentRecordEmployee")
+  managedRecords    EmploymentRecord[]  @relation("EmploymentRecordManager")
 
   workflowInstances WorkflowInstance[]
 
+  @@unique([organizationId, employeeCode])
+  @@unique([organizationId, pinfl])
+  @@unique([organizationId, workEmail])
   @@index([organizationId])
   @@index([managerId])
+  @@index([departmentId])
+  @@index([branchId])
+  @@index([positionId])
   @@map("employees")
+}
+
+// Har bir employment o'zgarishi (lavozim/bo'lim/filial/rahbar) yangi yozuv
+// hosil qiladi — eski yozuv endDate bilan yopiladi. Hech qachon o'chirilmaydi.
+model EmploymentRecord {
+  id              String    @id @default(cuid())
+  organizationId  String
+  employeeId      String
+  positionId      String?
+  departmentId    String?
+  branchId        String?
+  managerId       String?
+  startDate       DateTime
+  endDate         DateTime? // null = joriy/ochiq yozuv
+  reason          String?
+  changedByUserId String?
+  createdAt       DateTime  @default(now())
+
+  organization  Organization @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+  employee      Employee     @relation("EmploymentRecordEmployee", fields: [employeeId], references: [id], onDelete: Cascade)
+  position      Position?    @relation(fields: [positionId], references: [id])
+  department    Department?  @relation(fields: [departmentId], references: [id])
+  branch        Branch?      @relation(fields: [branchId], references: [id])
+  manager       Employee?    @relation("EmploymentRecordManager", fields: [managerId], references: [id])
+  changedByUser User?        @relation("EmploymentRecordChangedBy", fields: [changedByUserId], references: [id])
+
+  @@index([organizationId])
+  @@index([employeeId, startDate])
+  @@map("employment_records")
+}
+
+model EmployeeEducation {
+  id             String   @id @default(cuid())
+  organizationId String
+  employeeId     String
+  level          String // masalan: "Bakalavr", "Magistr"
+  institution    String
+  specialty      String?
+  graduationYear Int?
+  createdAt      DateTime @default(now())
+
+  organization Organization @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+  employee     Employee     @relation(fields: [employeeId], references: [id], onDelete: Cascade)
+
+  @@index([employeeId])
+  @@map("employee_education")
+}
+
+// Skeleton — bu bosqichda upload UI/storage yo'q, faqat jadval tayyor.
+model EmployeeDocument {
+  id                String   @id @default(cuid())
+  organizationId    String
+  employeeId        String
+  name              String
+  fileUrl           String
+  uploadedByUserId  String?
+  createdAt         DateTime @default(now())
+
+  organization Organization @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+  employee     Employee     @relation(fields: [employeeId], references: [id], onDelete: Cascade)
+  uploadedByUser User?      @relation("DocumentUploadedBy", fields: [uploadedByUserId], references: [id])
+
+  @@index([employeeId])
+  @@map("employee_documents")
 }
 
 // ==========================================================================
@@ -252,7 +451,7 @@ model AuditLog {
   id             String   @id @default(cuid())
   organizationId String
   userId         String?
-  action         String // masalan: "workflow.instance.approved"
+  action         String // masalan: "employee.employment.changed"
   entityType     String
   entityId       String
   metadata       Json?
@@ -262,6 +461,7 @@ model AuditLog {
   user         User?        @relation(fields: [userId], references: [id])
 
   @@index([organizationId, createdAt])
+  @@index([entityType, entityId])
   @@map("audit_logs")
 }
 

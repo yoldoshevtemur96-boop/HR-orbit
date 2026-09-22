@@ -91,8 +91,9 @@ recruitmentRouter.patch(
 );
 
 const hireSchema = z.object({
-  position: z.string().min(1),
+  positionId: z.string().min(1),
   departmentId: z.string().optional(),
+  branchId: z.string().optional(),
   managerId: z.string().optional(),
 });
 

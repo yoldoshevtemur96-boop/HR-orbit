@@ -3,15 +3,8 @@
 import { useEffect } from 'react';
 import { useRouter } from 'next/navigation';
 import { useAuthStore } from '@/store/authStore';
+import { roleLabel } from '@/lib/roleLabels';
 import { Sidebar } from './Sidebar';
-
-const ROLE_LABEL: Record<string, string> = {
-  SUPER_ADMIN: 'HR-direktor',
-  HR_MANAGER: 'HR menejer',
-  RECRUITER: 'Rekruter',
-  DEPARTMENT_HEAD: "Bo'lim boshlig'i",
-  EMPLOYEE: 'Xodim',
-};
 
 // Himoyalangan sahifalar uchun umumiy qobiq: auth holatini tekshiradi,
 // yo'q bo'lsa /login'ga yo'naltiradi. Tuzilma: chapda doimiy modullar
@@ -77,12 +70,10 @@ export function AppShell({ children }: { children: React.ReactNode }) {
 
             <div className="flex items-center gap-2.5 border-l border-stone-200 pl-3">
               <span className="flex h-8 w-8 items-center justify-center rounded-full bg-accent-soft text-xs font-semibold text-accent">
-                {(ROLE_LABEL[user.role] ?? user.role).slice(0, 2).toUpperCase()}
+                {roleLabel(user.role).slice(0, 2).toUpperCase()}
               </span>
               <span className="hidden text-xs leading-tight sm:block">
-                <span className="block font-medium text-stone-800">
-                  {ROLE_LABEL[user.role] ?? user.role}
-                </span>
+                <span className="block font-medium text-stone-800">{roleLabel(user.role)}</span>
               </span>
             </div>
           </div>

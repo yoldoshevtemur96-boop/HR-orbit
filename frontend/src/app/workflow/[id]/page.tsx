@@ -58,7 +58,6 @@ export default function WorkflowInstancePage() {
         <div className="mx-auto max-w-2xl">
           <p className="text-xs font-semibold uppercase tracking-wide text-accent">{instance.template.name}</p>
           <h1 className="mt-1 font-display text-2xl font-semibold text-stone-900">{instance.employee.fullName}</h1>
-          <p className="mt-1 text-sm text-stone-500">{instance.employee.position}</p>
 
           <div className="mt-4">
             <StatusBadge status={instance.status} />

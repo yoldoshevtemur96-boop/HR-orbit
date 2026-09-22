@@ -1,8 +1,17 @@
 -- CreateEnum
-CREATE TYPE "RoleName" AS ENUM ('SUPER_ADMIN', 'HR_MANAGER', 'RECRUITER', 'DEPARTMENT_HEAD', 'EMPLOYEE');
+CREATE TYPE "RoleName" AS ENUM ('SUPER_ADMIN', 'HR_MANAGER', 'HR_SPECIALIST', 'RECRUITER', 'DEPARTMENT_HEAD', 'EMPLOYEE');
 
 -- CreateEnum
-CREATE TYPE "EmploymentStatus" AS ENUM ('ACTIVE', 'ON_LEAVE', 'TERMINATED');
+CREATE TYPE "OrgUnitStatus" AS ENUM ('ACTIVE', 'ARCHIVED');
+
+-- CreateEnum
+CREATE TYPE "EmploymentStatus" AS ENUM ('ACTIVE', 'PROBATION', 'ON_LEAVE', 'SUSPENDED', 'TERMINATED', 'ARCHIVED');
+
+-- CreateEnum
+CREATE TYPE "EmploymentType" AS ENUM ('FULL_TIME', 'PART_TIME', 'TEMPORARY', 'CONTRACT', 'REMOTE', 'HYBRID');
+
+-- CreateEnum
+CREATE TYPE "Gender" AS ENUM ('MALE', 'FEMALE');
 
 -- CreateEnum
 CREATE TYPE "ApproverType" AS ENUM ('SPECIFIC_USER', 'ROLE', 'DIRECT_MANAGER', 'DEPARTMENT_HEAD');
@@ -53,10 +62,50 @@ CREATE TABLE "departments" (
     "id" TEXT NOT NULL,
     "organizationId" TEXT NOT NULL,
     "name" TEXT NOT NULL,
+    "code" TEXT NOT NULL,
     "parentId" TEXT,
     "headEmployeeId" TEXT,
+    "status" "OrgUnitStatus" NOT NULL DEFAULT 'ACTIVE',
+    "archivedAt" TIMESTAMP(3),
+    "createdAt" TIMESTAMP(3) NOT NULL DEFAULT CURRENT_TIMESTAMP,
+    "updatedAt" TIMESTAMP(3) NOT NULL,
 
     CONSTRAINT "departments_pkey" PRIMARY KEY ("id")
+);
+
+-- CreateTable
+CREATE TABLE "branches" (
+    "id" TEXT NOT NULL,
+    "organizationId" TEXT NOT NULL,
+    "name" TEXT NOT NULL,
+    "code" TEXT NOT NULL,
+    "region" TEXT,
+    "address" TEXT,
+    "managerId" TEXT,
+    "status" "OrgUnitStatus" NOT NULL DEFAULT 'ACTIVE',
+    "archivedAt" TIMESTAMP(3),
+    "createdAt" TIMESTAMP(3) NOT NULL DEFAULT CURRENT_TIMESTAMP,
+    "updatedAt" TIMESTAMP(3) NOT NULL,
+
+    CONSTRAINT "branches_pkey" PRIMARY KEY ("id")
+);
+
+-- CreateTable
+CREATE TABLE "positions" (
+    "id" TEXT NOT NULL,
+    "organizationId" TEXT NOT NULL,
+    "departmentId" TEXT NOT NULL,
+    "branchId" TEXT,
+    "name" TEXT NOT NULL,
+    "code" TEXT NOT NULL,
+    "grade" TEXT,
+    "approvedHeadcount" INTEGER NOT NULL DEFAULT 1,
+    "status" "OrgUnitStatus" NOT NULL DEFAULT 'ACTIVE',
+    "archivedAt" TIMESTAMP(3),
+    "createdAt" TIMESTAMP(3) NOT NULL DEFAULT CURRENT_TIMESTAMP,
+    "updatedAt" TIMESTAMP(3) NOT NULL,
+
+    CONSTRAINT "positions_pkey" PRIMARY KEY ("id")
 );
 
 -- CreateTable
@@ -64,16 +113,83 @@ CREATE TABLE "employees" (
     "id" TEXT NOT NULL,
     "organizationId" TEXT NOT NULL,
     "userId" TEXT,
-    "departmentId" TEXT,
-    "managerId" TEXT,
+    "employeeCode" TEXT NOT NULL,
+    "firstName" TEXT NOT NULL,
+    "lastName" TEXT NOT NULL,
+    "middleName" TEXT,
     "fullName" TEXT NOT NULL,
-    "position" TEXT NOT NULL,
+    "dateOfBirth" TIMESTAMP(3),
+    "gender" "Gender",
+    "pinfl" TEXT,
+    "passportNumber" TEXT,
+    "personalPhone" TEXT,
+    "workPhone" TEXT,
+    "personalEmail" TEXT,
+    "workEmail" TEXT,
+    "address" TEXT,
+    "emergencyContactName" TEXT,
+    "emergencyContactPhone" TEXT,
+    "departmentId" TEXT,
+    "branchId" TEXT,
+    "positionId" TEXT,
+    "managerId" TEXT,
     "status" "EmploymentStatus" NOT NULL DEFAULT 'ACTIVE',
+    "employmentType" "EmploymentType",
+    "contractNumber" TEXT,
+    "contractStartDate" TIMESTAMP(3),
+    "contractEndDate" TIMESTAMP(3),
+    "workSchedule" TEXT,
+    "workLocation" TEXT,
     "hiredAt" TIMESTAMP(3) NOT NULL DEFAULT CURRENT_TIMESTAMP,
     "createdAt" TIMESTAMP(3) NOT NULL DEFAULT CURRENT_TIMESTAMP,
     "updatedAt" TIMESTAMP(3) NOT NULL,
 
     CONSTRAINT "employees_pkey" PRIMARY KEY ("id")
+);
+
+-- CreateTable
+CREATE TABLE "employment_records" (
+    "id" TEXT NOT NULL,
+    "organizationId" TEXT NOT NULL,
+    "employeeId" TEXT NOT NULL,
+    "positionId" TEXT,
+    "departmentId" TEXT,
+    "branchId" TEXT,
+    "managerId" TEXT,
+    "startDate" TIMESTAMP(3) NOT NULL,
+    "endDate" TIMESTAMP(3),
+    "reason" TEXT,
+    "changedByUserId" TEXT,
+    "createdAt" TIMESTAMP(3) NOT NULL DEFAULT CURRENT_TIMESTAMP,
+
+    CONSTRAINT "employment_records_pkey" PRIMARY KEY ("id")
+);
+
+-- CreateTable
+CREATE TABLE "employee_education" (
+    "id" TEXT NOT NULL,
+    "organizationId" TEXT NOT NULL,
+    "employeeId" TEXT NOT NULL,
+    "level" TEXT NOT NULL,
+    "institution" TEXT NOT NULL,
+    "specialty" TEXT,
+    "graduationYear" INTEGER,
+    "createdAt" TIMESTAMP(3) NOT NULL DEFAULT CURRENT_TIMESTAMP,
+
+    CONSTRAINT "employee_education_pkey" PRIMARY KEY ("id")
+);
+
+-- CreateTable
+CREATE TABLE "employee_documents" (
+    "id" TEXT NOT NULL,
+    "organizationId" TEXT NOT NULL,
+    "employeeId" TEXT NOT NULL,
+    "name" TEXT NOT NULL,
+    "fileUrl" TEXT NOT NULL,
+    "uploadedByUserId" TEXT,
+    "createdAt" TIMESTAMP(3) NOT NULL DEFAULT CURRENT_TIMESTAMP,
+
+    CONSTRAINT "employee_documents_pkey" PRIMARY KEY ("id")
 );
 
 -- CreateTable
@@ -197,6 +313,27 @@ CREATE UNIQUE INDEX "departments_headEmployeeId_key" ON "departments"("headEmplo
 CREATE INDEX "departments_organizationId_idx" ON "departments"("organizationId");
 
 -- CreateIndex
+CREATE UNIQUE INDEX "departments_organizationId_code_key" ON "departments"("organizationId", "code");
+
+-- CreateIndex
+CREATE UNIQUE INDEX "branches_managerId_key" ON "branches"("managerId");
+
+-- CreateIndex
+CREATE INDEX "branches_organizationId_idx" ON "branches"("organizationId");
+
+-- CreateIndex
+CREATE UNIQUE INDEX "branches_organizationId_code_key" ON "branches"("organizationId", "code");
+
+-- CreateIndex
+CREATE INDEX "positions_organizationId_idx" ON "positions"("organizationId");
+
+-- CreateIndex
+CREATE INDEX "positions_departmentId_idx" ON "positions"("departmentId");
+
+-- CreateIndex
+CREATE UNIQUE INDEX "positions_organizationId_code_key" ON "positions"("organizationId", "code");
+
+-- CreateIndex
 CREATE UNIQUE INDEX "employees_userId_key" ON "employees"("userId");
 
 -- CreateIndex
@@ -204,6 +341,36 @@ CREATE INDEX "employees_organizationId_idx" ON "employees"("organizationId");
 
 -- CreateIndex
 CREATE INDEX "employees_managerId_idx" ON "employees"("managerId");
+
+-- CreateIndex
+CREATE INDEX "employees_departmentId_idx" ON "employees"("departmentId");
+
+-- CreateIndex
+CREATE INDEX "employees_branchId_idx" ON "employees"("branchId");
+
+-- CreateIndex
+CREATE INDEX "employees_positionId_idx" ON "employees"("positionId");
+
+-- CreateIndex
+CREATE UNIQUE INDEX "employees_organizationId_employeeCode_key" ON "employees"("organizationId", "employeeCode");
+
+-- CreateIndex
+CREATE UNIQUE INDEX "employees_organizationId_pinfl_key" ON "employees"("organizationId", "pinfl");
+
+-- CreateIndex
+CREATE UNIQUE INDEX "employees_organizationId_workEmail_key" ON "employees"("organizationId", "workEmail");
+
+-- CreateIndex
+CREATE INDEX "employment_records_organizationId_idx" ON "employment_records"("organizationId");
+
+-- CreateIndex
+CREATE INDEX "employment_records_employeeId_startDate_idx" ON "employment_records"("employeeId", "startDate");
+
+-- CreateIndex
+CREATE INDEX "employee_education_employeeId_idx" ON "employee_education"("employeeId");
+
+-- CreateIndex
+CREATE INDEX "employee_documents_employeeId_idx" ON "employee_documents"("employeeId");
 
 -- CreateIndex
 CREATE INDEX "workflow_templates_organizationId_idx" ON "workflow_templates"("organizationId");
@@ -227,6 +394,9 @@ CREATE UNIQUE INDEX "workflow_step_actions_instanceId_stepId_key" ON "workflow_s
 CREATE INDEX "audit_logs_organizationId_createdAt_idx" ON "audit_logs"("organizationId", "createdAt");
 
 -- CreateIndex
+CREATE INDEX "audit_logs_entityType_entityId_idx" ON "audit_logs"("entityType", "entityId");
+
+-- CreateIndex
 CREATE INDEX "vacancies_organizationId_idx" ON "vacancies"("organizationId");
 
 -- CreateIndex
@@ -248,6 +418,21 @@ ALTER TABLE "departments" ADD CONSTRAINT "departments_parentId_fkey" FOREIGN KEY
 ALTER TABLE "departments" ADD CONSTRAINT "departments_headEmployeeId_fkey" FOREIGN KEY ("headEmployeeId") REFERENCES "employees"("id") ON DELETE SET NULL ON UPDATE CASCADE;
 
 -- AddForeignKey
+ALTER TABLE "branches" ADD CONSTRAINT "branches_organizationId_fkey" FOREIGN KEY ("organizationId") REFERENCES "organizations"("id") ON DELETE CASCADE ON UPDATE CASCADE;
+
+-- AddForeignKey
+ALTER TABLE "branches" ADD CONSTRAINT "branches_managerId_fkey" FOREIGN KEY ("managerId") REFERENCES "employees"("id") ON DELETE SET NULL ON UPDATE CASCADE;
+
+-- AddForeignKey
+ALTER TABLE "positions" ADD CONSTRAINT "positions_organizationId_fkey" FOREIGN KEY ("organizationId") REFERENCES "organizations"("id") ON DELETE CASCADE ON UPDATE CASCADE;
+
+-- AddForeignKey
+ALTER TABLE "positions" ADD CONSTRAINT "positions_departmentId_fkey" FOREIGN KEY ("departmentId") REFERENCES "departments"("id") ON DELETE RESTRICT ON UPDATE CASCADE;
+
+-- AddForeignKey
+ALTER TABLE "positions" ADD CONSTRAINT "positions_branchId_fkey" FOREIGN KEY ("branchId") REFERENCES "branches"("id") ON DELETE SET NULL ON UPDATE CASCADE;
+
+-- AddForeignKey
 ALTER TABLE "employees" ADD CONSTRAINT "employees_organizationId_fkey" FOREIGN KEY ("organizationId") REFERENCES "organizations"("id") ON DELETE CASCADE ON UPDATE CASCADE;
 
 -- AddForeignKey
@@ -257,7 +442,49 @@ ALTER TABLE "employees" ADD CONSTRAINT "employees_userId_fkey" FOREIGN KEY ("use
 ALTER TABLE "employees" ADD CONSTRAINT "employees_departmentId_fkey" FOREIGN KEY ("departmentId") REFERENCES "departments"("id") ON DELETE SET NULL ON UPDATE CASCADE;
 
 -- AddForeignKey
+ALTER TABLE "employees" ADD CONSTRAINT "employees_branchId_fkey" FOREIGN KEY ("branchId") REFERENCES "branches"("id") ON DELETE SET NULL ON UPDATE CASCADE;
+
+-- AddForeignKey
+ALTER TABLE "employees" ADD CONSTRAINT "employees_positionId_fkey" FOREIGN KEY ("positionId") REFERENCES "positions"("id") ON DELETE SET NULL ON UPDATE CASCADE;
+
+-- AddForeignKey
 ALTER TABLE "employees" ADD CONSTRAINT "employees_managerId_fkey" FOREIGN KEY ("managerId") REFERENCES "employees"("id") ON DELETE SET NULL ON UPDATE CASCADE;
+
+-- AddForeignKey
+ALTER TABLE "employment_records" ADD CONSTRAINT "employment_records_organizationId_fkey" FOREIGN KEY ("organizationId") REFERENCES "organizations"("id") ON DELETE CASCADE ON UPDATE CASCADE;
+
+-- AddForeignKey
+ALTER TABLE "employment_records" ADD CONSTRAINT "employment_records_employeeId_fkey" FOREIGN KEY ("employeeId") REFERENCES "employees"("id") ON DELETE CASCADE ON UPDATE CASCADE;
+
+-- AddForeignKey
+ALTER TABLE "employment_records" ADD CONSTRAINT "employment_records_positionId_fkey" FOREIGN KEY ("positionId") REFERENCES "positions"("id") ON DELETE SET NULL ON UPDATE CASCADE;
+
+-- AddForeignKey
+ALTER TABLE "employment_records" ADD CONSTRAINT "employment_records_departmentId_fkey" FOREIGN KEY ("departmentId") REFERENCES "departments"("id") ON DELETE SET NULL ON UPDATE CASCADE;
+
+-- AddForeignKey
+ALTER TABLE "employment_records" ADD CONSTRAINT "employment_records_branchId_fkey" FOREIGN KEY ("branchId") REFERENCES "branches"("id") ON DELETE SET NULL ON UPDATE CASCADE;
+
+-- AddForeignKey
+ALTER TABLE "employment_records" ADD CONSTRAINT "employment_records_managerId_fkey" FOREIGN KEY ("managerId") REFERENCES "employees"("id") ON DELETE SET NULL ON UPDATE CASCADE;
+
+-- AddForeignKey
+ALTER TABLE "employment_records" ADD CONSTRAINT "employment_records_changedByUserId_fkey" FOREIGN KEY ("changedByUserId") REFERENCES "users"("id") ON DELETE SET NULL ON UPDATE CASCADE;
+
+-- AddForeignKey
+ALTER TABLE "employee_education" ADD CONSTRAINT "employee_education_organizationId_fkey" FOREIGN KEY ("organizationId") REFERENCES "organizations"("id") ON DELETE CASCADE ON UPDATE CASCADE;
+
+-- AddForeignKey
+ALTER TABLE "employee_education" ADD CONSTRAINT "employee_education_employeeId_fkey" FOREIGN KEY ("employeeId") REFERENCES "employees"("id") ON DELETE CASCADE ON UPDATE CASCADE;
+
+-- AddForeignKey
+ALTER TABLE "employee_documents" ADD CONSTRAINT "employee_documents_organizationId_fkey" FOREIGN KEY ("organizationId") REFERENCES "organizations"("id") ON DELETE CASCADE ON UPDATE CASCADE;
+
+-- AddForeignKey
+ALTER TABLE "employee_documents" ADD CONSTRAINT "employee_documents_employeeId_fkey" FOREIGN KEY ("employeeId") REFERENCES "employees"("id") ON DELETE CASCADE ON UPDATE CASCADE;
+
+-- AddForeignKey
+ALTER TABLE "employee_documents" ADD CONSTRAINT "employee_documents_uploadedByUserId_fkey" FOREIGN KEY ("uploadedByUserId") REFERENCES "users"("id") ON DELETE SET NULL ON UPDATE CASCADE;
 
 -- AddForeignKey
 ALTER TABLE "workflow_templates" ADD CONSTRAINT "workflow_templates_organizationId_fkey" FOREIGN KEY ("organizationId") REFERENCES "organizations"("id") ON DELETE CASCADE ON UPDATE CASCADE;

@@ -17,13 +17,13 @@ export interface WorkflowInstanceSummary {
   currentStepOrder: number;
   createdAt: string;
   template: { id: string; name: string };
-  employee?: { id: string; fullName: string; position: string };
+  employee?: { id: string; fullName: string };
 }
 
 export interface WorkflowInstanceDetail extends WorkflowInstanceSummary {
   formData: Record<string, unknown>;
   generatedDocument: string | null;
-  employee: { id: string; fullName: string; position: string };
+  employee: { id: string; fullName: string };
   timeline: TimelineStep[];
 }
 

@@ -38,23 +38,51 @@ export async function moveCandidateStage(organizationId: string, candidateId: st
 export async function hireCandidate(
   organizationId: string,
   candidateId: string,
-  input: { position: string; departmentId?: string; managerId?: string },
+  input: { positionId: string; departmentId?: string; branchId?: string; managerId?: string },
 ) {
   const candidate = await prisma.candidate.findFirst({ where: { id: candidateId, organizationId } });
   if (!candidate) {
     throw AppError.notFound('Nomzod topilmadi');
   }
 
+  const [firstName, ...rest] = candidate.fullName.trim().split(/\s+/);
+  const lastName = rest.join(' ') || firstName;
+
   return prisma.$transaction(async (tx) => {
+    const employeeCount = await tx.employee.count({ where: { organizationId } });
+    const employeeCode = `EMP-${String(employeeCount + 1).padStart(5, '0')}`;
+
     const employee = await tx.employee.create({
       data: {
         organizationId,
+        employeeCode,
+        firstName,
+        lastName,
         fullName: candidate.fullName,
-        position: input.position,
+        personalEmail: candidate.email,
+        personalPhone: candidate.phone,
+        positionId: input.positionId,
         departmentId: input.departmentId,
+        branchId: input.branchId,
         managerId: input.managerId,
+        status: 'ACTIVE',
       },
     });
+
+    await tx.employmentRecord.create({
+      data: {
+        organizationId,
+        employeeId: employee.id,
+        positionId: input.positionId,
+        departmentId: input.departmentId,
+        branchId: input.branchId,
+        managerId: input.managerId,
+        startDate: employee.hiredAt,
+        endDate: null,
+        reason: 'Nomzodlikdan ishga qabul qilindi',
+      },
+    });
+
     await tx.candidate.update({ where: { id: candidateId }, data: { stage: 'HIRED' } });
     return employee;
   });

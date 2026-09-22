@@ -28,6 +28,9 @@ export async function registerOrganization(input: RegisterOrgInput) {
       data: { name: input.organizationName, slug: input.organizationSlug },
     });
 
+    const [firstName, ...rest] = input.adminFullName.trim().split(/\s+/);
+    const lastName = rest.join(' ') || firstName;
+
     const user = await tx.user.create({
       data: {
         organizationId: organization.id,
@@ -37,8 +40,11 @@ export async function registerOrganization(input: RegisterOrgInput) {
         employee: {
           create: {
             organizationId: organization.id,
+            employeeCode: 'EMP-00001',
+            firstName,
+            lastName,
             fullName: input.adminFullName,
-            position: 'Administrator',
+            workEmail: input.adminEmail,
           },
         },
       },

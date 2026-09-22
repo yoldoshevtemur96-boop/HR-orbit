@@ -3,14 +3,7 @@
 import Link from 'next/link';
 import { usePathname } from 'next/navigation';
 import { useAuthStore } from '@/store/authStore';
-
-const ROLE_LABEL: Record<string, string> = {
-  SUPER_ADMIN: 'HR-direktor',
-  HR_MANAGER: 'HR menejer',
-  RECRUITER: 'Rekruter',
-  DEPARTMENT_HEAD: "Bo'lim boshlig'i",
-  EMPLOYEE: 'Xodim',
-};
+import { roleLabel } from '@/lib/roleLabels';
 
 interface NavItem {
   label: string;
@@ -115,12 +108,10 @@ export function Sidebar() {
             className="flex w-full items-center gap-2.5 rounded-lg px-2 py-2 text-left transition hover:bg-white/5"
           >
             <span className="flex h-8 w-8 flex-shrink-0 items-center justify-center rounded-full bg-accent/20 text-xs font-semibold text-accent">
-              {(ROLE_LABEL[user.role] ?? user.role).slice(0, 2).toUpperCase()}
+              {roleLabel(user.role).slice(0, 2).toUpperCase()}
             </span>
             <span className="min-w-0 leading-tight">
-              <span className="block truncate text-xs font-medium text-stone-100">
-                {ROLE_LABEL[user.role] ?? user.role}
-              </span>
+              <span className="block truncate text-xs font-medium text-stone-100">{roleLabel(user.role)}</span>
               <span className="block text-[11px] text-stone-500">Chiqish</span>
             </span>
           </button>
