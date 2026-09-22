@@ -13,6 +13,7 @@
     "resolveJsonModule": true,
     "declaration": false,
     "sourceMap": true,
+    "types": ["node"],
     "paths": {
       "@/*": ["./src/*"]
     }
