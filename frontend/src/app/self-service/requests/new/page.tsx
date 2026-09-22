@@ -1,8 +1,7 @@
 'use client';
 
 import { useEffect, useState } from 'react';
-import { useRouter } from 'next/navigation';
-import { AppShell } from '@/components/AppShell';
+import { useRouter, useSearchParams } from 'next/navigation';
 import { DynamicRequestForm } from '@/components/ess/DynamicRequestForm';
 import { api } from '@/lib/api';
 import type { WorkflowTemplate } from '@/types/workflow';
@@ -12,11 +11,15 @@ interface EmployeeOption {
   fullName: string;
 }
 
-// Xodim shablonlar ro'yxatidan tanlaydi, formani to'ldiradi va yuboradi.
-// Forma maydonlari WorkflowTemplate.formSchema'dan dinamik chiziladi —
-// konstruktorda qo'shilgan har qanday yangi maydon bu yerda avtomatik chiqadi.
-export default function NewWorkflowPage() {
+// workflow/new/page.tsx'ning ESS uchun moslashtirilgan nusxasi —
+// employeeId'ni /hr/employees/me orqali oladi (mo'rt "butun ro'yxatdan
+// qidirish" naqshi o'rniga). Submit qilingach mavjud /workflow/[id]
+// kuzatuv sahifasiga yo'naltiradi — alohida detail sahifa qurilmaydi.
+export default function NewRequestPage() {
   const router = useRouter();
+  const searchParams = useSearchParams();
+  const presetTemplateId = searchParams.get('templateId');
+  const presetRequestType = searchParams.get('requestType');
 
   const [templates, setTemplates] = useState<WorkflowTemplate[] | null>(null);
   const [selectedTemplateId, setSelectedTemplateId] = useState<string>('');
@@ -32,6 +35,15 @@ export default function NewWorkflowPage() {
       .then((res) => setMyEmployee(res.data))
       .catch(() => setMyEmployee(null));
   }, []);
+
+  useEffect(() => {
+    if (presetTemplateId && templates?.some((t) => t.id === presetTemplateId)) {
+      setSelectedTemplateId(presetTemplateId);
+      if (presetRequestType) {
+        setFormValues((prev) => ({ ...prev, requestType: presetRequestType }));
+      }
+    }
+  }, [presetTemplateId, presetRequestType, templates]);
 
   const selectedTemplate = templates?.find((t) => t.id === selectedTemplateId) ?? null;
 
@@ -58,20 +70,20 @@ export default function NewWorkflowPage() {
       });
       router.push(`/workflow/${res.data.id}`);
     } catch (err: any) {
-      setError(err?.response?.data?.error?.message ?? 'Ariza yuborishda xatolik yuz berdi');
+      setError(err?.response?.data?.error?.message ?? 'Soʻrov yuborishda xatolik yuz berdi');
     } finally {
       setIsSubmitting(false);
     }
   }
 
   return (
-    <AppShell>
-      <p className="text-xs font-semibold uppercase tracking-wide text-accent">Yangi ariza</p>
-      <h1 className="mt-1 font-display text-2xl font-semibold text-stone-900">Ariza turini tanlang</h1>
+    <div>
+      <p className="text-xs font-semibold uppercase tracking-wide text-accent">Self-Service</p>
+      <h1 className="mt-1 font-display text-2xl font-semibold text-stone-900">Yangi so&apos;rov</h1>
 
       {!myEmployee && templates !== null && (
         <p className="mt-4 rounded-md bg-rose-50 px-3 py-2 text-sm text-rose-700">
-          Hisobingiz xodim profiliga bog&apos;lanmagan — ariza yubora olmaysiz.
+          Hisobingiz xodim profiliga bog&apos;lanmagan — so&apos;rov yubora olmaysiz.
         </p>
       )}
 
@@ -120,10 +132,10 @@ export default function NewWorkflowPage() {
             disabled={isSubmitting || !myEmployee}
             className="mt-2 self-start rounded-lg bg-accent px-4 py-2.5 text-sm font-semibold text-white transition hover:opacity-90 disabled:opacity-50"
           >
-            {isSubmitting ? 'Yuborilmoqda...' : 'Arizani yuborish'}
+            {isSubmitting ? 'Yuborilmoqda...' : 'Soʻrovni yuborish'}
           </button>
         </form>
       )}
-    </AppShell>
+    </div>
   );
 }

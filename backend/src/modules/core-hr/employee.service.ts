@@ -248,6 +248,21 @@ export async function getEmployeeById(auth: AuthContext, employeeId: string) {
   return sanitizeEmployeeForRole(employee, auth.role, isSelf);
 }
 
+// Employee Self-Service uchun: joriy foydalanuvchining o'z Core HR yozuvini
+// topadi ("user -> employee -> Core HR" zanjiri). ESS sahifalari o'z
+// employeeId'ini shu orqali oladi — butun xodimlar ro'yxatini olib,
+// userId bo'yicha qidirishning mo'rt naqshi o'rniga.
+export async function getMyEmployee(auth: AuthContext) {
+  const employee = await prisma.employee.findFirst({
+    where: { userId: auth.userId, organizationId: auth.organizationId },
+    include: EMPLOYEE_INCLUDE,
+  });
+  if (!employee) {
+    throw AppError.notFound("Sizga bog'langan xodim profili topilmadi");
+  }
+  return sanitizeEmployeeForRole(employee, auth.role, true);
+}
+
 async function assertCanViewEmployee(
   auth: AuthContext,
   employeeId: string,

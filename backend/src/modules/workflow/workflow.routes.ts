@@ -113,7 +113,7 @@ workflowRouter.get('/instances/pending-for-me', async (req, res) => {
 });
 
 workflowRouter.get('/instances/:id', async (req, res) => {
-  const instance = await instanceService.getInstanceById(req.auth!.organizationId, req.params.id);
+  const instance = await instanceService.getInstanceById(req.auth!.organizationId, req.params.id, req.auth!);
   res.json(instance);
 });
 

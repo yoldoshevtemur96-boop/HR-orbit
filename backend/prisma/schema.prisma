@@ -36,6 +36,7 @@ model Organization {
   auditLogs         AuditLog[]
   vacancies         Vacancy[]
   candidates        Candidate[]
+  notifications     Notification[]
 
   @@map("organizations")
 }
@@ -71,6 +72,7 @@ model User {
   auditLogs               AuditLog[]
   employmentRecordChanges EmploymentRecord[]   @relation("EmploymentRecordChangedBy")
   uploadedDocuments       EmployeeDocument[]   @relation("DocumentUploadedBy")
+  notifications           Notification[]
 
   @@unique([organizationId, email])
   @@index([organizationId])
@@ -463,6 +465,37 @@ model AuditLog {
   @@index([organizationId, createdAt])
   @@index([entityType, entityId])
   @@map("audit_logs")
+}
+
+// ==========================================================================
+// NOTIFICATIONS — Employee Self-Service uchun minimal in-app bildirishnoma
+// ==========================================================================
+
+enum NotificationType {
+  REQUEST_SUBMITTED
+  REQUEST_APPROVED
+  REQUEST_REJECTED
+  HR_MESSAGE
+  DOCUMENT_AVAILABLE
+}
+
+model Notification {
+  id             String           @id @default(cuid())
+  organizationId String
+  userId         String // qabul qiluvchi
+  type           NotificationType
+  message        String
+  entityType     String? // masalan "WorkflowInstance"
+  entityId       String?
+  isRead         Boolean          @default(false)
+  createdAt      DateTime         @default(now())
+
+  organization Organization @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+  user         User         @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@index([userId, isRead])
+  @@index([organizationId])
+  @@map("notifications")
 }
 
 // ==========================================================================

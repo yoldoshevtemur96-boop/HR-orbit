@@ -8,6 +8,7 @@ import * as branchService from './branch.service';
 import * as positionService from './position.service';
 import * as employmentHistoryService from './employmentHistory.service';
 import * as educationService from './education.service';
+import * as documentService from './document.service';
 import * as dashboardService from './dashboard.service';
 import * as auditLogService from './auditLog.service';
 import { canEditLimited } from './rbac';
@@ -86,6 +87,13 @@ coreHrRouter.get('/employees', async (req, res) => {
   const query = listEmployeesQuerySchema.parse(req.query);
   const result = await employeeService.listEmployees({ auth: req.auth!, ...query });
   res.json(result);
+});
+
+// "/employees/:id" dan OLDIN bo'lishi shart — aks holda Express "me"ni
+// employeeId deb qabul qilib, getEmployeeById'ga uzatib yuboradi.
+coreHrRouter.get('/employees/me', async (req, res) => {
+  const employee = await employeeService.getMyEmployee(req.auth!);
+  res.json(employee);
 });
 
 coreHrRouter.get('/employees/:id', async (req, res) => {
@@ -173,6 +181,40 @@ coreHrRouter.post('/employees/:id/education', async (req, res) => {
 coreHrRouter.get('/employees/:id/education', async (req, res) => {
   const education = await educationService.listEducation(req.auth!.organizationId, req.params.id);
   res.json(education);
+});
+
+// ---------------------------------------------------------------------------
+// Documents — skeleton: fileUrl tashqi havola, haqiqiy upload/storage yo'q
+// ---------------------------------------------------------------------------
+
+coreHrRouter.get('/employees/:id/documents', async (req, res) => {
+  if (!canEditLimited(req.auth!.role)) {
+    const self = await employeeService.getMyEmployee(req.auth!).catch(() => null);
+    if (!self || self.id !== req.params.id) {
+      throw AppError.forbidden();
+    }
+  }
+  const documents = await documentService.listDocuments(req.auth!.organizationId, req.params.id);
+  res.json(documents);
+});
+
+const addDocumentSchema = z.object({
+  name: z.string().min(1),
+  fileUrl: z.string().min(1),
+});
+
+coreHrRouter.post('/employees/:id/documents', async (req, res) => {
+  if (!canEditLimited(req.auth!.role)) {
+    throw AppError.forbidden();
+  }
+  const input = addDocumentSchema.parse(req.body);
+  const document = await documentService.addDocument({
+    organizationId: req.auth!.organizationId,
+    employeeId: req.params.id,
+    uploadedByUserId: req.auth!.userId,
+    ...input,
+  });
+  res.status(201).json(document);
 });
 
 // ---------------------------------------------------------------------------

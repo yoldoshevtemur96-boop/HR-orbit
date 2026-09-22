@@ -4,6 +4,7 @@ import { useEffect } from 'react';
 import { useRouter } from 'next/navigation';
 import { useAuthStore } from '@/store/authStore';
 import { roleLabel } from '@/lib/roleLabels';
+import { NotificationBell } from './NotificationBell';
 import { Sidebar } from './Sidebar';
 
 // Himoyalangan sahifalar uchun umumiy qobiq: auth holatini tekshiradi,
@@ -57,16 +58,7 @@ export function AppShell({ children }: { children: React.ReactNode }) {
           </div>
 
           <div className="flex items-center gap-3">
-            <button
-              type="button"
-              aria-label="Bildirishnomalar"
-              className="relative flex h-9 w-9 items-center justify-center rounded-full text-stone-500 transition hover:bg-stone-100 hover:text-stone-800"
-            >
-              <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round" className="h-5 w-5">
-                <path d="M18 8a6 6 0 0 0-12 0c0 7-3 9-3 9h18s-3-2-3-9" />
-                <path d="M13.73 21a2 2 0 0 1-3.46 0" />
-              </svg>
-            </button>
+            <NotificationBell />
 
             <div className="flex items-center gap-2.5 border-l border-stone-200 pl-3">
               <span className="flex h-8 w-8 items-center justify-center rounded-full bg-accent-soft text-xs font-semibold text-accent">

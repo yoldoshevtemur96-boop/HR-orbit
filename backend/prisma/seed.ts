@@ -284,6 +284,158 @@ async function main() {
     },
   });
 
+  // --- Employee Self-Service uchun qo'shimcha ariza turlari ---------------
+  // Ko'pchiligi 1-2 bosqichli — asosiy ta'til shablonidan farqli (4 bosqich —
+  // qonuniy talab bo'lgani uchun istisno).
+
+  const annualLeaveTemplate = await prisma.workflowTemplate.create({
+    data: {
+      organizationId: org.id,
+      name: 'Yillik mehnat ta\'tili',
+      description: 'Yillik ta\'til uchun standart ariza.',
+      formSchema: [
+        { key: 'startDate', label: 'Boshlanish sanasi', type: 'date', required: true },
+        { key: 'endDate', label: 'Tugash sanasi', type: 'date', required: true },
+        { key: 'daysCount', label: 'Kunlar soni', type: 'number', required: true },
+        { key: 'note', label: 'Izoh', type: 'textarea', required: false },
+      ],
+      documentBody:
+        '{{employeeName}} yillik mehnat ta\'tiliga {{startDate}} dan {{endDate}} gacha ({{daysCount}} kun) chiqishini so\'raydi.\nIzoh: {{note}}',
+      steps: {
+        create: [
+          { order: 1, name: 'Bevosita rahbar tasdig\'i', approverType: 'DIRECT_MANAGER', actionType: 'APPROVE' },
+          { order: 2, name: 'Kadrlar bo\'limi tasdig\'i', approverType: 'ROLE', approverRole: 'HR_MANAGER', actionType: 'APPROVE' },
+        ],
+      },
+    },
+  });
+
+  const unpaidLeaveTemplate = await prisma.workflowTemplate.create({
+    data: {
+      organizationId: org.id,
+      name: 'Haq to\'lanmaydigan ta\'til',
+      description: 'Haq to\'lanmaydigan ta\'til uchun ariza.',
+      formSchema: [
+        { key: 'startDate', label: 'Boshlanish sanasi', type: 'date', required: true },
+        { key: 'endDate', label: 'Tugash sanasi', type: 'date', required: true },
+        { key: 'reason', label: 'Sabab', type: 'textarea', required: true },
+      ],
+      documentBody:
+        '{{employeeName}} haq to\'lanmaydigan ta\'tilga {{startDate}} dan {{endDate}} gacha chiqishini so\'raydi.\nSabab: {{reason}}',
+      steps: {
+        create: [
+          { order: 1, name: 'Bevosita rahbar tasdig\'i', approverType: 'DIRECT_MANAGER', actionType: 'APPROVE' },
+          { order: 2, name: 'Kadrlar bo\'limi tasdig\'i', approverType: 'ROLE', approverRole: 'HR_MANAGER', actionType: 'APPROVE' },
+        ],
+      },
+    },
+  });
+
+  const studyLeaveTemplate = await prisma.workflowTemplate.create({
+    data: {
+      organizationId: org.id,
+      name: 'O\'qish ta\'tili',
+      description: 'Ta\'lim muassasasida o\'qish bilan bog\'liq ta\'til.',
+      formSchema: [
+        { key: 'startDate', label: 'Boshlanish sanasi', type: 'date', required: true },
+        { key: 'endDate', label: 'Tugash sanasi', type: 'date', required: true },
+        { key: 'institution', label: 'Ta\'lim muassasasi', type: 'text', required: true },
+        { key: 'note', label: 'Izoh', type: 'textarea', required: false },
+      ],
+      documentBody:
+        '{{employeeName}} o\'qish ta\'tiliga {{startDate}} dan {{endDate}} gacha ({{institution}}) chiqishini so\'raydi.',
+      steps: {
+        create: [
+          { order: 1, name: 'Bevosita rahbar tasdig\'i', approverType: 'DIRECT_MANAGER', actionType: 'APPROVE' },
+          { order: 2, name: 'Kadrlar bo\'limi tasdig\'i', approverType: 'ROLE', approverRole: 'HR_MANAGER', actionType: 'APPROVE' },
+        ],
+      },
+    },
+  });
+
+  const maternityLeaveTemplate = await prisma.workflowTemplate.create({
+    data: {
+      organizationId: org.id,
+      name: 'Homiladorlik va bola parvarishi ta\'tili',
+      description: 'Homiladorlik yoki bola parvarishi bilan bog\'liq ta\'til.',
+      formSchema: [
+        { key: 'startDate', label: 'Boshlanish sanasi', type: 'date', required: true },
+        { key: 'endDate', label: 'Tugash sanasi', type: 'date', required: true },
+        { key: 'note', label: 'Izoh', type: 'textarea', required: false },
+      ],
+      documentBody:
+        '{{employeeName}} homiladorlik/bola parvarishi ta\'tiliga {{startDate}} dan {{endDate}} gacha chiqishini so\'raydi.',
+      steps: {
+        create: [{ order: 1, name: 'Kadrlar bo\'limi tasdig\'i', approverType: 'ROLE', approverRole: 'HR_MANAGER', actionType: 'APPROVE' }],
+      },
+    },
+  });
+
+  const changePersonalInfoTemplate = await prisma.workflowTemplate.create({
+    data: {
+      organizationId: org.id,
+      name: 'Shaxsiy ma\'lumotni o\'zgartirish',
+      description: 'Kontakt ma\'lumotlarini o\'zgartirish so\'rovi — HR tasdiqlagach qo\'lda qo\'llaniladi.',
+      formSchema: [
+        {
+          key: 'field',
+          label: 'Qaysi maydon',
+          type: 'select',
+          required: true,
+          options: ['personalPhone', 'personalEmail', 'address', 'emergencyContactName', 'emergencyContactPhone'],
+        },
+        { key: 'oldValue', label: 'Joriy qiymat', type: 'text', required: false },
+        { key: 'newValue', label: 'Yangi qiymat', type: 'text', required: true },
+        { key: 'reason', label: 'Sabab', type: 'textarea', required: true },
+      ],
+      documentBody:
+        '{{employeeName}} "{{field}}" maydonini "{{oldValue}}" dan "{{newValue}}" ga o\'zgartirishni so\'raydi.\nSabab: {{reason}}',
+      steps: {
+        create: [{ order: 1, name: 'Kadrlar bo\'limi tasdig\'i', approverType: 'ROLE', approverRole: 'HR_MANAGER', actionType: 'APPROVE' }],
+      },
+    },
+  });
+
+  const changeBankDetailsTemplate = await prisma.workflowTemplate.create({
+    data: {
+      organizationId: org.id,
+      name: 'Bank rekvizitlarini o\'zgartirish',
+      description: 'Ish haqi o\'tkaziladigan bank ma\'lumotlarini yangilash so\'rovi.',
+      formSchema: [
+        { key: 'bankName', label: 'Bank nomi', type: 'text', required: true },
+        { key: 'accountNumber', label: 'Hisob raqami', type: 'text', required: true },
+        { key: 'reason', label: 'Sabab', type: 'textarea', required: true },
+      ],
+      documentBody:
+        '{{employeeName}} bank rekvizitlarini o\'zgartirishni so\'raydi: {{bankName}}, hisob raqami {{accountNumber}}.\nSabab: {{reason}}',
+      steps: {
+        create: [{ order: 1, name: 'Kadrlar bo\'limi tasdig\'i', approverType: 'ROLE', approverRole: 'HR_MANAGER', actionType: 'APPROVE' }],
+      },
+    },
+  });
+
+  const otherHrRequestTemplate = await prisma.workflowTemplate.create({
+    data: {
+      organizationId: org.id,
+      name: 'Boshqa HR so\'rovi',
+      description: 'Ma\'lumotnoma, shartnoma nusxasi va boshqa hujjat/so\'rovlar uchun (HR Services).',
+      formSchema: [
+        {
+          key: 'requestType',
+          label: 'So\'rov turi',
+          type: 'select',
+          required: true,
+          options: ['Ma\'lumotnoma', 'Mehnat shartnomasi nusxasi', 'Boshqa hujjat/so\'rov'],
+        },
+        { key: 'details', label: 'Tafsilotlar', type: 'textarea', required: true },
+      ],
+      documentBody: '{{employeeName}} quyidagi so\'rovni yubordi: {{requestType}}.\nTafsilotlar: {{details}}',
+      steps: {
+        create: [{ order: 1, name: 'Kadrlar bo\'limi tasdig\'i', approverType: 'ROLE', approverRole: 'HR_MANAGER', actionType: 'APPROVE' }],
+      },
+    },
+  });
+
   console.log('Seed tugadi ✅');
   console.log('---------------------------------------------');
   console.log('Tashkilot slug:', org.slug);
@@ -293,7 +445,17 @@ async function main() {
   console.log('  Bo\'lim boshlig\'i:', deptHeadUser.email);
   console.log('  Yurist:', legalUser.email);
   console.log('  Oddiy xodim:', employeeUser.email);
-  console.log('Workflow shabloni yaratildi:', template.name, '(id:', template.id + ')');
+  console.log('Workflow shablonlari yaratildi:');
+  [
+    template,
+    annualLeaveTemplate,
+    unpaidLeaveTemplate,
+    studyLeaveTemplate,
+    maternityLeaveTemplate,
+    changePersonalInfoTemplate,
+    changeBankDetailsTemplate,
+    otherHrRequestTemplate,
+  ].forEach((t) => console.log('  -', t.name, '(id:', t.id + ')'));
   console.log('---------------------------------------------');
 }
 

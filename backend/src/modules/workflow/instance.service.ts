@@ -1,5 +1,6 @@
 import { prisma } from '@/config/prisma';
 import { AppError } from '@/common/errors/AppError';
+import { createNotification } from '@/modules/notifications/notification.service';
 import type { PrismaClient, RoleName } from '@prisma/client';
 
 interface CreateInstanceInput {
@@ -63,6 +64,21 @@ export async function createInstance(input: CreateInstanceInput) {
             status: 'PENDING',
           },
         });
+
+        // Faqat birinchi bosqich ijrochisiga — "sizdan javob kutilmoqda" bildirishnomasi
+        if (step.order === 1 && assignedUserId) {
+          await createNotification(
+            {
+              organizationId: input.organizationId,
+              userId: assignedUserId,
+              type: 'REQUEST_SUBMITTED',
+              message: `${template.name} arizasi tasdiqlash uchun yuborildi`,
+              entityType: 'WorkflowInstance',
+              entityId: instance.id,
+            },
+            tx,
+          );
+        }
       }
 
       await tx.auditLog.create({
@@ -183,6 +199,17 @@ export async function decideStep(input: DecideStepInput) {
           where: { id: instance.id },
           data: { status: 'REJECTED' },
         });
+        await createNotification(
+          {
+            organizationId: input.organizationId,
+            userId: instance.initiatorUserId,
+            type: 'REQUEST_REJECTED',
+            message: `${instance.template.name} arizangiz rad etildi`,
+            entityType: 'WorkflowInstance',
+            entityId: instance.id,
+          },
+          tx,
+        );
       } else {
         const nextStep = instance.template.steps.find((s) => s.order === instance.currentStepOrder + 1);
         if (nextStep) {
@@ -191,20 +218,45 @@ export async function decideStep(input: DecideStepInput) {
           const nextAction = await tx.workflowStepAction.findUnique({
             where: { instanceId_stepId: { instanceId: instance.id, stepId: nextStep.id } },
           });
+          let nextAssignedUserId = nextAction?.assignedUserId ?? null;
           if (nextAction && !nextAction.assignedUserId) {
-            const assignedUserId = await resolveApprover(tx, input.organizationId, instance.employeeId, nextStep);
-            await tx.workflowStepAction.update({ where: { id: nextAction.id }, data: { assignedUserId } });
+            nextAssignedUserId = await resolveApprover(tx, input.organizationId, instance.employeeId, nextStep);
+            await tx.workflowStepAction.update({ where: { id: nextAction.id }, data: { assignedUserId: nextAssignedUserId } });
           }
           await tx.workflowInstance.update({
             where: { id: instance.id },
             data: { currentStepOrder: nextStep.order },
           });
+          if (nextAssignedUserId) {
+            await createNotification(
+              {
+                organizationId: input.organizationId,
+                userId: nextAssignedUserId,
+                type: 'REQUEST_SUBMITTED',
+                message: `${instance.template.name} arizasi tasdiqlash uchun yuborildi`,
+                entityType: 'WorkflowInstance',
+                entityId: instance.id,
+              },
+              tx,
+            );
+          }
         } else {
           // Zanjirning oxiri — ariza to'liq tasdiqlandi
           await tx.workflowInstance.update({
             where: { id: instance.id },
             data: { status: 'APPROVED' },
           });
+          await createNotification(
+            {
+              organizationId: input.organizationId,
+              userId: instance.initiatorUserId,
+              type: 'REQUEST_APPROVED',
+              message: `${instance.template.name} arizangiz to'liq tasdiqlandi`,
+              entityType: 'WorkflowInstance',
+              entityId: instance.id,
+            },
+            tx,
+          );
         }
       }
 
@@ -228,9 +280,14 @@ export async function decideStep(input: DecideStepInput) {
 }
 
 // Kuzatuv ekrani uchun: "kimga bordi, kim imzolagan, kim navbatda" — bitta obyektda.
+// `auth` berilsa — kirish huquqi tekshiriladi (faqat initiator, biror bosqichga
+// tayinlangan ishtirokchi, yoki HR/Admin ko'ra oladi). Ichki chaqiruvlar
+// (createInstance/decideStep o'z natijasini qaytarishda) auth'siz chaqiradi —
+// bu allaqachon ishonchli amal natijasi, qayta tekshiruv shart emas.
 export async function getInstanceById(
   organizationId: string,
   instanceId: string,
+  auth?: { userId: string; role: RoleName },
   tx: any = prisma,
 ) {
   const instance = await tx.workflowInstance.findFirst({
@@ -246,6 +303,15 @@ export async function getInstanceById(
   });
   if (!instance) {
     throw AppError.notFound('Ariza topilmadi');
+  }
+
+  if (auth) {
+    const isPrivileged = auth.role === 'SUPER_ADMIN' || auth.role === 'HR_MANAGER' || auth.role === 'HR_SPECIALIST';
+    const isInitiator = instance.initiatorUserId === auth.userId;
+    const isParticipant = instance.stepActions.some((a: any) => a.assignedUserId === auth.userId);
+    if (!isPrivileged && !isInitiator && !isParticipant) {
+      throw AppError.forbidden("Bu arizani ko'rish huquqingiz yo'q");
+    }
   }
 
   const timeline = instance.template.steps.map((step: any) => {
