@@ -13,6 +13,12 @@ services:
         value: production
       - key: PORT
         value: 4000
+      # NODE_ENV=production bo'lsa npm install devDependencies'ni
+      # o'tkazib yuboradi (typescript/tsc-alias/@types/* shu yerda) —
+      # bu build'ni buzadi. Shu bayroq npm'ga buni majburlab o'rnatishni
+      # buyuradi.
+      - key: NPM_CONFIG_PRODUCTION
+        value: "false"
       - key: DATABASE_URL
         sync: false
       - key: DIRECT_URL
