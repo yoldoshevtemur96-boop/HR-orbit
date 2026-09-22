@@ -15,3 +15,19 @@ api.interceptors.request.use((config) => {
   }
   return config;
 });
+
+// Token yaroqsiz/muddati tugagan bo'lsa — tozalab login sahifasiga qaytaramiz.
+// (To'liq refresh-token oqimi keyingi bosqichda qo'shiladi.)
+api.interceptors.response.use(
+  (response) => response,
+  (error) => {
+    if (typeof window !== 'undefined' && error?.response?.status === 401) {
+      window.localStorage.removeItem('accessToken');
+      window.localStorage.removeItem('refreshToken');
+      if (window.location.pathname !== '/login') {
+        window.location.href = '/login';
+      }
+    }
+    return Promise.reject(error);
+  },
+);
