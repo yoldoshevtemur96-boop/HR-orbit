@@ -1,0 +1,324 @@
+// HR Orbit — asosiy ma'lumotlar bazasi sxemasi
+// Multi-tenant: deyarli barcha jadvallar organizationId orqali ajratiladi.
+
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider  = "postgresql"
+  url       = env("DATABASE_URL") // pooler (pgbouncer) — runtime so'rovlar uchun
+  directUrl = env("DIRECT_URL") // to'g'ridan-to'g'ri ulanish — migratsiyalar uchun
+}
+
+// ==========================================================================
+// TENANT / ORGANIZATION
+// ==========================================================================
+
+model Organization {
+  id        String   @id @default(cuid())
+  name      String
+  slug      String   @unique // subdomen: slug.hrorbit.uz
+  plan      String   @default("trial") // trial | starter | pro
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  users             User[]
+  departments       Department[]
+  employees         Employee[]
+  workflowTemplates WorkflowTemplate[]
+  workflowInstances WorkflowInstance[]
+  auditLogs         AuditLog[]
+  vacancies         Vacancy[]
+  candidates        Candidate[]
+
+  @@map("organizations")
+}
+
+// ==========================================================================
+// AUTH / USERS / ROLES
+// ==========================================================================
+
+enum RoleName {
+  SUPER_ADMIN // tenant ichidagi to'liq huquq
+  HR_MANAGER
+  RECRUITER
+  DEPARTMENT_HEAD
+  EMPLOYEE
+}
+
+model User {
+  id             String   @id @default(cuid())
+  organizationId String
+  email          String
+  passwordHash   String
+  role           RoleName @default(EMPLOYEE)
+  isActive       Boolean  @default(true)
+  createdAt      DateTime @default(now())
+  updatedAt      DateTime @updatedAt
+
+  organization Organization @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+  employee     Employee?
+
+  initiatedWorkflows WorkflowInstance[]     @relation("WorkflowInitiator")
+  stepActions        WorkflowStepAction[]
+  auditLogs          AuditLog[]
+
+  @@unique([organizationId, email])
+  @@index([organizationId])
+  @@map("users")
+}
+
+// ==========================================================================
+// CORE HR
+// ==========================================================================
+
+model Department {
+  id             String   @id @default(cuid())
+  organizationId String
+  name           String
+  parentId       String? // tashkiliy ierarxiya uchun o'z-o'ziga bog'lanish
+  headEmployeeId String? @unique // bo'lim boshlig'i
+
+  organization Organization @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+  parent       Department?  @relation("DeptHierarchy", fields: [parentId], references: [id])
+  children     Department[] @relation("DeptHierarchy")
+  employees    Employee[]   @relation("DeptEmployees")
+  headEmployee Employee?    @relation("DeptHead", fields: [headEmployeeId], references: [id])
+
+  @@index([organizationId])
+  @@map("departments")
+}
+
+enum EmploymentStatus {
+  ACTIVE
+  ON_LEAVE
+  TERMINATED
+}
+
+model Employee {
+  id             String           @id @default(cuid())
+  organizationId String
+  userId         String?          @unique
+  departmentId   String?
+  managerId      String? // bevosita rahbar — workflow marshrutlash uchun muhim
+  fullName       String
+  position       String
+  status         EmploymentStatus @default(ACTIVE)
+  hiredAt        DateTime         @default(now())
+  createdAt      DateTime         @default(now())
+  updatedAt      DateTime         @updatedAt
+
+  organization Organization @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+  user         User?         @relation(fields: [userId], references: [id])
+  department   Department?   @relation("DeptEmployees", fields: [departmentId], references: [id])
+  manager      Employee?     @relation("EmployeeManager", fields: [managerId], references: [id])
+  directReports Employee[]   @relation("EmployeeManager")
+  headOfDept   Department?   @relation("DeptHead")
+
+  workflowInstances WorkflowInstance[]
+
+  @@index([organizationId])
+  @@index([managerId])
+  @@map("employees")
+}
+
+// ==========================================================================
+// WORKFLOW ENGINE — konstruktor + ijro
+//
+// Ariza turlari (Ta'til, Ma'lumotnoma, Xodimni ko'chirish va h.k.) shablon
+// sifatida saqlanadi. Har bir shablon o'z bosqichlar zanjiriga ega —
+// zanjirdagi har bir bosqich "kim tasdiqlaydi" degan qoidaga ega:
+// aniq lavozim (masalan "Kadrlar bo'limi") yoki dinamik qoida
+// (masalan "boshlovchining bevosita rahbari" — ApproverType.MANAGER).
+// ==========================================================================
+
+// Kim tasdiqlaydi — bosqich qoidasi
+enum ApproverType {
+  SPECIFIC_USER // aniq belgilangan shaxs (approverUserId)
+  ROLE // aniq rol (masalan HR_MANAGER — tashkilotdagi barcha shu roldagilar emas, birinchi topilgani)
+  DIRECT_MANAGER // arizachining bevosita rahbari (Employee.managerId)
+  DEPARTMENT_HEAD // arizachi bo'limining boshlig'i
+}
+
+enum StepActionType {
+  APPROVE // imzolash/tasdiqlash (rad etish mumkin)
+  ACKNOWLEDGE // faqat xabardor bo'lish, bloklamaydi
+}
+
+// Ariza/hujjat shabloni — konstruktorda yaratiladi
+model WorkflowTemplate {
+  id             String   @id @default(cuid())
+  organizationId String
+  name           String // masalan: "Mehnat ta'tiliga chiqish arizasi"
+  description    String?
+  isActive       Boolean  @default(true)
+  formSchema     Json // dinamik forma maydonlari: [{key, label, type, required}, ...]
+  documentBody   String? // hujjat/buyruq matni shabloni, {{maydon}} o'rin bosuvchilar bilan
+  createdAt      DateTime @default(now())
+  updatedAt      DateTime @updatedAt
+
+  organization Organization    @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+  steps        WorkflowStep[]
+  instances    WorkflowInstance[]
+
+  @@index([organizationId])
+  @@map("workflow_templates")
+}
+
+// Zanjirdagi bitta bosqich — konstruktorda tartib bilan belgilanadi
+model WorkflowStep {
+  id             String         @id @default(cuid())
+  templateId     String
+  order          Int // 1, 2, 3... — zanjirdagi tartib
+  name           String // masalan: "Bo'lim boshlig'i tasdig'i"
+  approverType   ApproverType
+  approverRole   RoleName? // approverType = ROLE bo'lsa
+  approverUserId String? // approverType = SPECIFIC_USER bo'lsa
+  actionType     StepActionType @default(APPROVE)
+
+  template        WorkflowTemplate     @relation(fields: [templateId], references: [id], onDelete: Cascade)
+  stepExecutions  WorkflowStepAction[]
+
+  @@unique([templateId, order])
+  @@map("workflow_steps")
+}
+
+enum WorkflowInstanceStatus {
+  IN_PROGRESS
+  APPROVED // barcha bosqichlardan o'tdi
+  REJECTED // kimdir rad etdi
+  CANCELLED // arizachi bekor qildi
+}
+
+// Xodim tomonidan yuborilgan aniq ariza — shablon asosida yaratilgan instance
+model WorkflowInstance {
+  id               String                  @id @default(cuid())
+  organizationId   String
+  templateId       String
+  initiatorUserId  String // arizani kim yubordi
+  employeeId       String // qaysi xodimga tegishli (odatda initiator bilan bir xil)
+  formData         Json // to'ldirilgan forma qiymatlari (masalan boshlanish sanasi, kun soni)
+  generatedDocument String? // shablon + formData asosida generatsiya qilingan hujjat matni
+  status           WorkflowInstanceStatus  @default(IN_PROGRESS)
+  currentStepOrder Int                     @default(1) // hozir navbat qaysi bosqichda turibdi
+  createdAt        DateTime                @default(now())
+  updatedAt        DateTime                @updatedAt
+
+  organization Organization @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+  template     WorkflowTemplate @relation(fields: [templateId], references: [id])
+  initiator    User             @relation("WorkflowInitiator", fields: [initiatorUserId], references: [id])
+  employee     Employee         @relation(fields: [employeeId], references: [id])
+  stepActions  WorkflowStepAction[]
+
+  @@index([organizationId])
+  @@index([status])
+  @@map("workflow_instances")
+}
+
+enum StepActionStatus {
+  PENDING
+  APPROVED
+  REJECTED
+  SKIPPED
+}
+
+// Har bir instance uchun har bir bosqichning haqiqiy natijasi —
+// "kim, qachon, qanday qaror qildi" shu yerda ko'rinadi (kuzatuv ekrani shu yerdan o'qiydi)
+model WorkflowStepAction {
+  id           String            @id @default(cuid())
+  instanceId   String
+  stepId       String
+  assignedUserId String? // qoida hisoblanib, kimga tayinlanganligi aniqlangach to'ldiriladi
+  status       StepActionStatus  @default(PENDING)
+  comment      String?
+  actedAt      DateTime?
+  createdAt    DateTime          @default(now())
+
+  instance     WorkflowInstance @relation(fields: [instanceId], references: [id], onDelete: Cascade)
+  step         WorkflowStep     @relation(fields: [stepId], references: [id])
+  assignedUser User?            @relation(fields: [assignedUserId], references: [id])
+
+  @@unique([instanceId, stepId])
+  @@index([assignedUserId, status])
+  @@map("workflow_step_actions")
+}
+
+// ==========================================================================
+// AUDIT LOG
+// ==========================================================================
+
+model AuditLog {
+  id             String   @id @default(cuid())
+  organizationId String
+  userId         String?
+  action         String // masalan: "workflow.instance.approved"
+  entityType     String
+  entityId       String
+  metadata       Json?
+  createdAt      DateTime @default(now())
+
+  organization Organization @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+  user         User?        @relation(fields: [userId], references: [id])
+
+  @@index([organizationId, createdAt])
+  @@map("audit_logs")
+}
+
+// ==========================================================================
+// RECRUITMENT (ATS) — Faza 2
+// ==========================================================================
+
+enum VacancyStatus {
+  OPEN
+  ON_HOLD
+  CLOSED
+}
+
+model Vacancy {
+  id             String        @id @default(cuid())
+  organizationId String
+  departmentId   String?
+  title          String
+  description    String?
+  status         VacancyStatus @default(OPEN)
+  createdAt      DateTime      @default(now())
+  updatedAt      DateTime      @updatedAt
+
+  organization Organization @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+  candidates   Candidate[]
+
+  @@index([organizationId])
+  @@map("vacancies")
+}
+
+// Kanban bosqichlari: yangi → skrining → intervyu → offer → ishga qabul / rad
+enum CandidateStage {
+  NEW
+  SCREENING
+  INTERVIEW
+  OFFER
+  HIRED
+  REJECTED
+}
+
+model Candidate {
+  id             String         @id @default(cuid())
+  organizationId String
+  vacancyId      String
+  fullName       String
+  email          String?
+  phone          String?
+  resumeUrl      String?
+  stage          CandidateStage @default(NEW)
+  notes          String?
+  createdAt      DateTime       @default(now())
+  updatedAt      DateTime       @updatedAt
+
+  organization Organization @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+  vacancy      Vacancy      @relation(fields: [vacancyId], references: [id], onDelete: Cascade)
+
+  @@index([organizationId])
+  @@index([vacancyId, stage])
+  @@map("candidates")
+}

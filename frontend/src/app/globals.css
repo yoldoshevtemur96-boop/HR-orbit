@@ -1,0 +1,13 @@
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
+
+:root {
+  --font-display: 'Fraunces', Georgia, serif;
+  --font-body: 'Manrope', -apple-system, 'Segoe UI', sans-serif;
+}
+
+body {
+  background: #f7f8f5;
+  color: #14180f;
+}
