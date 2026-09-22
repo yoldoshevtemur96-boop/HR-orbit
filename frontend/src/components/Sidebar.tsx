@@ -28,8 +28,6 @@ const NAV_ITEMS: NavItem[] = [
   { label: 'Otpuska', href: '/workflow' },
   { label: 'Obuchenie', href: '/training' },
   { label: 'KPI va baholash', href: '/kpi' },
-  { label: 'Kompensatsiyalar', href: '/compensation' },
-  { label: 'Boʻshatish', href: '/offboarding' },
   { label: 'Analitika', href: '/analytics' },
   { label: 'Administrirovanie', href: '/admin' },
 ];
@@ -55,12 +53,6 @@ const ICONS: Record<string, JSX.Element> = {
   ),
   'KPI va baholash': (
     <path d="M4 20V10M10 20V4M16 20v-7M20 20H3" />
-  ),
-  Kompensatsiyalar: (
-    <path d="M12 3v18M7 7.5c0-1.5 2-2.5 5-2.5s5 1 5 2.5-2 2.5-5 2.5-5 1-5 2.5 2 2.5 5 2.5 5-1 5-2.5" />
-  ),
-  "Boʻshatish": (
-    <path d="M10 3H5a2 2 0 0 0-2 2v14a2 2 0 0 0 2 2h5M15 16l4-4-4-4M19 12H9" />
   ),
   Analitika: (
     <path d="M4 19h16M7 16V9M12 16V5M17 16v-7" />
