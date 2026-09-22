@@ -17,48 +17,43 @@ interface NavItem {
   href: string;
 }
 
-// Rejalashtirish bosqichida kelishilgan 9 modul — HR Orbit loyihalash
-// hujjatidagi tuzilmaga mos. Sahifasi hali qurilmagan modullar ham
-// shu yerda ko'rinadi (bosilganda routega o'tadi, sahifa asta qo'shiladi).
+// Xodim hayot aylanishi bosqichlariga mos 7 bo'lim: Core HR (xodim/bo'lim
+// bazasi) → Employee Self-Service (xodimning shaxsiy kabineti) →
+// Applications & Workflow (shablon konstruktori — istalgan ariza turini
+// sozlash) → Attendance (davomat) → Leave (ta'til — mavjud workflow
+// sahifalari: ariza yaratish/kuzatish shu yerda) → Recruitment +
+// Onboarding (ishga qabul va moslashuv) → HR Analytics (hisobotlar).
 const NAV_ITEMS: NavItem[] = [
-  { label: 'Obzor', href: '/dashboard' },
-  { label: 'Podbor', href: '/recruitment' },
-  { label: 'Adaptatsiya', href: '/onboarding' },
-  { label: 'KDP', href: '/hr' },
-  { label: 'Otpuska', href: '/workflow' },
-  { label: 'Obuchenie', href: '/training' },
-  { label: 'KPI va baholash', href: '/kpi' },
-  { label: 'Analitika', href: '/analytics' },
-  { label: 'Administrirovanie', href: '/admin' },
+  { label: 'Core HR', href: '/hr' },
+  { label: 'Employee Self-Service', href: '/self-service' },
+  { label: 'Applications & Workflow', href: '/workflow/templates' },
+  { label: 'Attendance', href: '/attendance' },
+  { label: 'Leave', href: '/workflow' },
+  { label: 'Recruitment + Onboarding', href: '/recruitment' },
+  { label: 'HR Analytics', href: '/analytics' },
 ];
 
 const ICONS: Record<string, JSX.Element> = {
-  Obzor: (
-    <path d="M3 12h4v8H3v-8Zm7-6h4v14h-4V6Zm7 3h4v11h-4V9Z" />
-  ),
-  Podbor: (
-    <path d="M9 11a4 4 0 1 0 0-8 4 4 0 0 0 0 8Zm-6 9a6 6 0 0 1 6-6h0a6 6 0 0 1 6 6M17 8v6M20 11h-6" />
-  ),
-  Adaptatsiya: (
-    <path d="M4 4h12l4 4v12H4V4Zm12 0v4h4M8 12h8M8 16h5" />
-  ),
-  KDP: (
+  'Core HR': (
     <path d="M6 3h9l4 4v14H6V3Zm9 0v4h4M9 11h6M9 15h6" />
   ),
-  Otpuska: (
+  'Employee Self-Service': (
+    <path d="M12 12a4 4 0 1 0 0-8 4 4 0 0 0 0 8Zm-7 9a7 7 0 0 1 14 0" />
+  ),
+  'Applications & Workflow': (
+    <path d="M4 4h6v6H4V4Zm10 0h6v6h-6V4ZM4 14h6v6H4v-6Zm13 0 3 3-3 3m-3-3h6" />
+  ),
+  Attendance: (
+    <path d="M12 8v4l3 2M12 3a9 9 0 1 0 .01 0Z" />
+  ),
+  Leave: (
     <path d="M3 12c4-6 14-6 18 0M12 3v3M5 8l1.5 1.5M19 8l-1.5 1.5M12 21v-6M9 15h6" />
   ),
-  Obuchenie: (
-    <path d="M3 6.5 12 3l9 3.5-9 3.5-9-3.5Zm4 2v6c0 1.5 2.5 3 5 3s5-1.5 5-3v-6" />
+  'Recruitment + Onboarding': (
+    <path d="M9 11a4 4 0 1 0 0-8 4 4 0 0 0 0 8Zm-6 9a6 6 0 0 1 6-6h0a6 6 0 0 1 6 6M17 8v6M20 11h-6" />
   ),
-  'KPI va baholash': (
-    <path d="M4 20V10M10 20V4M16 20v-7M20 20H3" />
-  ),
-  Analitika: (
+  'HR Analytics': (
     <path d="M4 19h16M7 16V9M12 16V5M17 16v-7" />
-  ),
-  Administrirovanie: (
-    <path d="M12 2 4 5v6c0 5 3.5 8.5 8 11 4.5-2.5 8-6 8-11V5l-8-3Zm0 6v6" />
   ),
 };
 
