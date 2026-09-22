@@ -1,9 +1,11 @@
 'use client';
 
-import { useEffect, useState } from 'react';
+import { useCallback, useEffect, useState } from 'react';
 import Link from 'next/link';
 import { api } from '@/lib/api';
 import { StatusBadge } from '@/components/StatusBadge';
+import { Drawer } from '@/components/hr/Drawer';
+import { NewRequestForm } from '@/components/ess/NewRequestForm';
 import type { WorkflowInstanceSummary } from '@/types/workflow';
 
 // "Draft" holati backend'da yo'q (Workflow Engine har doim create=darhol
@@ -20,10 +22,20 @@ function requestStatusLabel(instance: WorkflowInstanceSummary): { label: string;
 
 export default function MyRequestsPage() {
   const [instances, setInstances] = useState<WorkflowInstanceSummary[] | null>(null);
+  const [isDrawerOpen, setIsDrawerOpen] = useState(false);
 
-  useEffect(() => {
+  const load = useCallback(() => {
     api.get<WorkflowInstanceSummary[]>('/workflow/instances/mine').then((res) => setInstances(res.data));
   }, []);
+
+  useEffect(() => {
+    load();
+  }, [load]);
+
+  function handleCreated() {
+    setIsDrawerOpen(false);
+    load();
+  }
 
   return (
     <div className="flex flex-col gap-4">
@@ -32,12 +44,13 @@ export default function MyRequestsPage() {
           <p className="text-xs font-semibold uppercase tracking-wide text-accent">Self-Service</p>
           <h1 className="mt-1 font-display text-2xl font-semibold text-stone-900">Mening so&apos;rovlarim</h1>
         </div>
-        <Link
-          href="/self-service/requests/new"
+        <button
+          type="button"
+          onClick={() => setIsDrawerOpen(true)}
           className="rounded-lg bg-accent px-4 py-2.5 text-sm font-semibold text-white transition hover:opacity-90"
         >
           + Yangi so&apos;rov
-        </Link>
+        </button>
       </div>
 
       <div className="overflow-hidden rounded-lg border border-stone-200 bg-white">
@@ -76,6 +89,10 @@ export default function MyRequestsPage() {
           </table>
         )}
       </div>
+
+      <Drawer isOpen={isDrawerOpen} title="Yangi so'rov" onClose={() => setIsDrawerOpen(false)}>
+        <NewRequestForm onCreated={handleCreated} />
+      </Drawer>
     </div>
   );
 }
