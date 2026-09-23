@@ -26,7 +26,7 @@ export function HrSubNav() {
           <Link
             key={tab.href}
             href={tab.href}
-            className={`whitespace-nowrap border-b-2 px-3 py-2.5 text-sm font-medium transition ${
+            className={`whitespace-nowrap border-b-2 px-4 py-3 text-sm font-medium transition ${
               isActive
                 ? 'border-accent text-accent'
                 : 'border-transparent text-stone-500 hover:border-stone-300 hover:text-stone-800'

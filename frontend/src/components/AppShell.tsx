@@ -37,7 +37,7 @@ export function AppShell({ children }: { children: React.ReactNode }) {
       <Sidebar />
 
       <div className="flex min-w-0 flex-1 flex-col">
-        <header className="flex items-center justify-between gap-4 border-b border-stone-200 bg-white px-6 py-3">
+        <header className="flex items-center justify-between gap-4 border-b border-stone-200 bg-white px-8 py-4">
           <div className="relative max-w-sm flex-1">
             <svg
               viewBox="0 0 24 24"
@@ -71,8 +71,8 @@ export function AppShell({ children }: { children: React.ReactNode }) {
           </div>
         </header>
 
-        <main className="flex-1 overflow-y-auto px-6 py-8">
-          <div className="mx-auto max-w-5xl">{children}</div>
+        <main className="flex-1 overflow-y-auto px-8 py-8">
+          <div className="mx-auto max-w-[1600px]">{children}</div>
         </main>
       </div>
     </div>

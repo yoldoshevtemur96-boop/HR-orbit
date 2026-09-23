@@ -39,7 +39,7 @@ export function DataTable<T>({
             {columns.map((col) => (
               <th
                 key={col.key}
-                className={`px-4 py-2.5 text-xs font-semibold uppercase tracking-wide text-stone-500 ${
+                className={`px-5 py-3 text-xs font-semibold uppercase tracking-wide text-stone-500 ${
                   col.align === 'right' ? 'text-right' : 'text-left'
                 }`}
               >
@@ -76,7 +76,7 @@ export function DataTable<T>({
             rows.map((row) => (
               <tr key={rowKey(row)} className="border-b border-stone-100 last:border-0 hover:bg-stone-50">
                 {columns.map((col) => (
-                  <td key={col.key} className={`px-4 py-2.5 ${col.align === 'right' ? 'text-right' : 'text-left'}`}>
+                  <td key={col.key} className={`px-5 py-3 ${col.align === 'right' ? 'text-right' : 'text-left'}`}>
                     {col.render(row)}
                   </td>
                 ))}

@@ -56,26 +56,26 @@ export function Sidebar() {
   const logout = useAuthStore((s) => s.logout);
 
   return (
-    <aside className="flex h-screen w-60 flex-shrink-0 flex-col bg-[#151b26] text-stone-300">
-      <div className="flex items-center gap-2.5 px-5 py-5">
-        <span className="flex h-8 w-8 items-center justify-center rounded-lg bg-accent text-sm font-bold text-white">
+    <aside className="flex h-screen w-72 flex-shrink-0 flex-col bg-[#151b26] text-stone-300">
+      <div className="flex items-center gap-3 px-6 py-6">
+        <span className="flex h-10 w-10 items-center justify-center rounded-lg bg-accent text-base font-bold text-white">
           H
         </span>
         <div className="leading-tight">
-          <p className="text-sm font-semibold text-white">HR Orbit</p>
-          <p className="text-[11px] text-stone-400">HR-platforma</p>
+          <p className="text-base font-semibold text-white">HR Orbit</p>
+          <p className="text-xs text-stone-400">HR-platforma</p>
         </div>
       </div>
 
-      <nav className="flex-1 overflow-y-auto px-3 py-2">
-        <ul className="flex flex-col gap-0.5">
+      <nav className="flex-1 overflow-y-auto px-4 py-3">
+        <ul className="flex flex-col gap-1">
           {NAV_ITEMS.map((item) => {
             const isActive = pathname === item.href || pathname?.startsWith(item.href + '/');
             return (
               <li key={item.href}>
                 <Link
                   href={item.href}
-                  className={`flex items-center gap-3 rounded-lg px-3 py-2 text-sm transition ${
+                  className={`flex items-center gap-3.5 rounded-lg px-4 py-3 text-[15px] transition ${
                     isActive
                       ? 'bg-accent/15 font-medium text-white'
                       : 'text-stone-400 hover:bg-white/5 hover:text-stone-100'
@@ -88,7 +88,7 @@ export function Sidebar() {
                     strokeWidth="1.8"
                     strokeLinecap="round"
                     strokeLinejoin="round"
-                    className={`h-4 w-4 flex-shrink-0 ${isActive ? 'text-accent' : 'text-stone-500'}`}
+                    className={`h-5 w-5 flex-shrink-0 ${isActive ? 'text-accent' : 'text-stone-500'}`}
                   >
                     {ICONS[item.label]}
                   </svg>
@@ -102,17 +102,17 @@ export function Sidebar() {
       </nav>
 
       {user && (
-        <div className="border-t border-white/10 px-3 py-3">
+        <div className="border-t border-white/10 px-4 py-4">
           <button
             onClick={logout}
-            className="flex w-full items-center gap-2.5 rounded-lg px-2 py-2 text-left transition hover:bg-white/5"
+            className="flex w-full items-center gap-3 rounded-lg px-3 py-2.5 text-left transition hover:bg-white/5"
           >
-            <span className="flex h-8 w-8 flex-shrink-0 items-center justify-center rounded-full bg-accent/20 text-xs font-semibold text-accent">
+            <span className="flex h-9 w-9 flex-shrink-0 items-center justify-center rounded-full bg-accent/20 text-xs font-semibold text-accent">
               {roleLabel(user.role).slice(0, 2).toUpperCase()}
             </span>
             <span className="min-w-0 leading-tight">
-              <span className="block truncate text-xs font-medium text-stone-100">{roleLabel(user.role)}</span>
-              <span className="block text-[11px] text-stone-500">Chiqish</span>
+              <span className="block truncate text-sm font-medium text-stone-100">{roleLabel(user.role)}</span>
+              <span className="block text-xs text-stone-500">Chiqish</span>
             </span>
           </button>
         </div>

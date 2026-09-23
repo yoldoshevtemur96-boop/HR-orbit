@@ -58,7 +58,7 @@ export default function EmployeeProfilePage() {
             key={tab.key}
             type="button"
             onClick={() => setActiveTab(tab.key)}
-            className={`whitespace-nowrap border-b-2 px-3 py-2.5 text-sm font-medium transition ${
+            className={`whitespace-nowrap border-b-2 px-4 py-3 text-sm font-medium transition ${
               activeTab === tab.key
                 ? 'border-accent text-accent'
                 : 'border-transparent text-stone-500 hover:border-stone-300 hover:text-stone-800'
