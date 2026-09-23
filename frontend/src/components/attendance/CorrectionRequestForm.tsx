@@ -17,11 +17,13 @@ function todayIso(): string {
 
 interface CorrectionRequestFormProps {
   onCreated: () => void;
+  presetDate?: string;
+  presetReasonType?: CorrectionReasonType;
 }
 
-export function CorrectionRequestForm({ onCreated }: CorrectionRequestFormProps) {
-  const [date, setDate] = useState(todayIso());
-  const [reasonType, setReasonType] = useState<CorrectionReasonType>('WRONG_CHECK_IN');
+export function CorrectionRequestForm({ onCreated, presetDate, presetReasonType }: CorrectionRequestFormProps) {
+  const [date, setDate] = useState(presetDate ?? todayIso());
+  const [reasonType, setReasonType] = useState<CorrectionReasonType>(presetReasonType ?? 'WRONG_CHECK_IN');
   const [requestedCheckIn, setRequestedCheckIn] = useState('');
   const [requestedCheckOut, setRequestedCheckOut] = useState('');
   const [comment, setComment] = useState('');
@@ -57,7 +59,8 @@ export function CorrectionRequestForm({ onCreated }: CorrectionRequestFormProps)
           value={date}
           onChange={(e) => setDate(e.target.value)}
           required
-          className="w-full rounded-lg border border-stone-200 px-3 py-2 text-sm outline-none focus:border-accent focus:ring-2 focus:ring-accent/15"
+          disabled={Boolean(presetDate)}
+          className="w-full rounded-lg border border-stone-200 px-3 py-2 text-sm outline-none focus:border-accent focus:ring-2 focus:ring-accent/15 disabled:bg-stone-50 disabled:text-stone-500"
         />
       </div>
 

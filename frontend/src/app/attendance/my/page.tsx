@@ -1,10 +1,12 @@
 'use client';
 
-import { useEffect, useState } from 'react';
+import { useCallback, useEffect, useState } from 'react';
 import Link from 'next/link';
 import { api } from '@/lib/api';
+import { Modal } from '@/components/hr/Modal';
 import { AttendanceDayStatusBadge } from '@/components/attendance/AttendanceDayStatusBadge';
 import { MonthlyCalendarView } from '@/components/attendance/MonthlyCalendarView';
+import { CorrectionRequestForm } from '@/components/attendance/CorrectionRequestForm';
 import type { AttendanceRecord } from '@/types/attendance';
 
 function formatTime(iso: string | null): string {
@@ -20,18 +22,23 @@ export default function MyAttendancePage() {
   const [today, setToday] = useState<AttendanceRecord | null>(null);
   const [records, setRecords] = useState<AttendanceRecord[]>([]);
   const [isLoading, setIsLoading] = useState(true);
+  const [correctionDate, setCorrectionDate] = useState<string | null>(null);
 
   useEffect(() => {
     api.get<AttendanceRecord | null>('/attendance/records/me/today').then((res) => setToday(res.data));
   }, []);
 
-  useEffect(() => {
+  const loadCalendar = useCallback(() => {
     setIsLoading(true);
     api
       .get<AttendanceRecord[]>('/attendance/records/me/calendar', { params: { year, month } })
       .then((res) => setRecords(res.data))
       .finally(() => setIsLoading(false));
   }, [year, month]);
+
+  useEffect(() => {
+    loadCalendar();
+  }, [loadCalendar]);
 
   function shiftMonth(delta: number) {
     const next = new Date(year, month - 1 + delta, 1);
@@ -94,8 +101,20 @@ export default function MyAttendancePage() {
       {isLoading ? (
         <p className="text-sm text-stone-400">Yuklanmoqda...</p>
       ) : (
-        <MonthlyCalendarView year={year} month={month} records={records} />
+        <MonthlyCalendarView year={year} month={month} records={records} onRequestCorrection={setCorrectionDate} />
       )}
+
+      <Modal isOpen={correctionDate !== null} title={`Tuzatish so'rovi — ${correctionDate ?? ''}`} onClose={() => setCorrectionDate(null)}>
+        {correctionDate && (
+          <CorrectionRequestForm
+            presetDate={correctionDate}
+            onCreated={() => {
+              setCorrectionDate(null);
+              loadCalendar();
+            }}
+          />
+        )}
+      </Modal>
     </div>
   );
 }
