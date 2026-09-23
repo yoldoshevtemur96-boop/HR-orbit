@@ -123,11 +123,14 @@ interface ListDailyAttendanceInput {
   date: Date;
   departmentId?: string;
   branchId?: string;
+  status?: 'ALL' | 'LATE' | 'ABSENT';
 }
 
 // Kunlik davomat jadvali — resurs-scope orqali qaysi xodimlar ko'rinishi
 // mumkinligini Core HR'dan oladi, so'ng shu kun uchun yozuvlarni biriktiradi.
 // Yozuvi yo'q xodim "ABSENT" sifatida ko'rsatiladi (yozuv yaratilmaydi).
+// `status` filtri DB darajasida emas — chunki yozuvi yo'q xodim ham
+// "ABSENT" hisoblanadi, shuning uchun natija tayyor bo'lgach filtrlanadi.
 export async function listDailyAttendance(input: ListDailyAttendanceInput) {
   if (!canViewDepartmentAttendance(input.auth.role)) {
     throw AppError.forbidden();
@@ -147,10 +150,14 @@ export async function listDailyAttendance(input: ListDailyAttendanceInput) {
   });
   const recordByEmployeeId = new Map(records.map((r) => [r.employeeId, r]));
 
-  return employees.map((employee) => ({
+  const rows = employees.map((employee) => ({
     employee,
     record: recordByEmployeeId.get(employee.id) ?? null,
   }));
+
+  if (!input.status || input.status === 'ALL') return rows;
+  if (input.status === 'LATE') return rows.filter((r) => r.record?.status === 'LATE');
+  return rows.filter((r) => (r.record?.status ?? 'ABSENT') === 'ABSENT');
 }
 
 // Resurs-scope tekshiruvi: o'zi, o'z bo'limi (DEPARTMENT_HEAD), yoki HR/Timekeeper.
@@ -197,4 +204,79 @@ export async function getMyAttendanceToday(auth: AuthContext) {
 export async function getMyMonthlyCalendar(auth: AuthContext, year: number, month: number) {
   const self = await getMyEmployee(auth);
   return getEmployeeMonthlyAttendance(auth, self.id, year, month);
+}
+
+interface MonthlyStatisticsInput {
+  auth: AuthContext;
+  departmentId?: string;
+  branchId?: string;
+  year: number;
+  month: number;
+}
+
+export interface MonthlyStatisticsRow {
+  employeeId: string;
+  employeeCode: string;
+  fullName: string;
+  presentCount: number;
+  lateCount: number;
+  absentCount: number;
+  totalWorkedHours: number;
+}
+
+// Tanlangan oy uchun har bir ko'rinadigan xodim bo'yicha agregat —
+// "Statistika" tabi uchun (kim necha marta kechikdi/kelmadi, jami soat).
+export async function getMonthlyStatistics(input: MonthlyStatisticsInput): Promise<MonthlyStatisticsRow[]> {
+  if (!canViewDepartmentAttendance(input.auth.role)) {
+    throw AppError.forbidden();
+  }
+
+  let departmentId = input.departmentId;
+  if (input.auth.role === 'DEPARTMENT_HEAD') {
+    const self = await getMyEmployee(input.auth).catch(() => null);
+    departmentId = self?.departmentId ?? '__none__';
+  }
+
+  const employees = await listActiveEmployeesForScope(input.auth, { departmentId, branchId: input.branchId });
+  const employeeIds = employees.map((e) => e.id);
+
+  const start = new Date(Date.UTC(input.year, input.month - 1, 1));
+  const end = new Date(Date.UTC(input.year, input.month, 1));
+
+  const records = await prisma.attendanceRecord.findMany({
+    where: { organizationId: input.auth.organizationId, employeeId: { in: employeeIds }, date: { gte: start, lt: end } },
+  });
+  const recordsByEmployee = new Map<string, typeof records>();
+  for (const record of records) {
+    const list = recordsByEmployee.get(record.employeeId) ?? [];
+    list.push(record);
+    recordsByEmployee.set(record.employeeId, list);
+  }
+
+  return employees.map((employee) => {
+    const employeeRecords = recordsByEmployee.get(employee.id) ?? [];
+    let presentCount = 0;
+    let lateCount = 0;
+    let absentCount = 0;
+    let totalWorkedMinutes = 0;
+
+    for (const record of employeeRecords) {
+      if (record.status === 'PRESENT' || record.status === 'LATE' || record.status === 'EARLY_LEAVE') {
+        presentCount += 1;
+      }
+      if (record.status === 'LATE') lateCount += 1;
+      if (record.status === 'ABSENT') absentCount += 1;
+      totalWorkedMinutes += record.workedMinutes;
+    }
+
+    return {
+      employeeId: employee.id,
+      employeeCode: employee.employeeCode,
+      fullName: employee.fullName,
+      presentCount,
+      lateCount,
+      absentCount,
+      totalWorkedHours: Math.round((totalWorkedMinutes / 60) * 100) / 100,
+    };
+  });
 }

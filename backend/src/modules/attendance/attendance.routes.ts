@@ -6,6 +6,7 @@ import * as settingsService from './attendanceSettings.service';
 import * as recordService from './attendanceRecord.service';
 import * as correctionService from './correction.service';
 import * as timesheetService from './timesheet.service';
+import * as exportService from './export.service';
 import { canManageAttendance, canViewDepartmentAttendance } from './rbac';
 
 export const attendanceRouter = Router();
@@ -21,8 +22,13 @@ function requireManageAttendance(req: Request) {
 // Settings
 // ---------------------------------------------------------------------------
 
+// O'qish canViewDepartmentAttendance'ga ochiq (DEPARTMENT_HEAD ham
+// standart ish vaqtini ko'ra oladi — kunlik jadvalda foydalanish
+// uchun), o'zgartirish esa faqat canManageAttendance'da qoladi.
 attendanceRouter.get('/settings', async (req, res) => {
-  requireManageAttendance(req);
+  if (!canViewDepartmentAttendance(req.auth!.role)) {
+    throw AppError.forbidden();
+  }
   const settings = await settingsService.getSettings(req.auth!.organizationId);
   res.json(settings);
 });
@@ -69,11 +75,39 @@ const listDailyQuerySchema = z.object({
   date: z.coerce.date(),
   departmentId: z.string().optional(),
   branchId: z.string().optional(),
+  status: z.enum(['ALL', 'LATE', 'ABSENT']).optional(),
 });
 
 attendanceRouter.get('/records/daily', async (req, res) => {
   const query = listDailyQuerySchema.parse(req.query);
   const result = await recordService.listDailyAttendance({ auth: req.auth!, ...query });
+  res.json(result);
+});
+
+const exportDailyQuerySchema = z.object({
+  date: z.coerce.date(),
+  departmentId: z.string().optional(),
+});
+
+attendanceRouter.get('/records/daily/export', async (req, res) => {
+  const { date, departmentId } = exportDailyQuerySchema.parse(req.query);
+  const buffer = await exportService.exportDailyAttendanceToExcel(req.auth!, date, departmentId);
+  const fileName = `davomat_${date.toISOString().slice(0, 10)}.xlsx`;
+  res.setHeader('Content-Type', 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet');
+  res.setHeader('Content-Disposition', `attachment; filename="${fileName}"`);
+  res.send(buffer);
+});
+
+const monthlyStatisticsQuerySchema = z.object({
+  year: z.coerce.number().int(),
+  month: z.coerce.number().int().min(1).max(12),
+  departmentId: z.string().optional(),
+  branchId: z.string().optional(),
+});
+
+attendanceRouter.get('/records/statistics', async (req, res) => {
+  const query = monthlyStatisticsQuerySchema.parse(req.query);
+  const result = await recordService.getMonthlyStatistics({ auth: req.auth!, ...query });
   res.json(result);
 });
 

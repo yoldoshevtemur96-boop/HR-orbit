@@ -110,6 +110,16 @@ export interface DepartmentTimesheet {
   generatedByUserId: string;
 }
 
+export interface MonthlyStatisticsRow {
+  employeeId: string;
+  employeeCode: string;
+  fullName: string;
+  presentCount: number;
+  lateCount: number;
+  absentCount: number;
+  totalWorkedHours: number;
+}
+
 export interface OrganizationTimesheet {
   id: string;
   organizationId: string;
