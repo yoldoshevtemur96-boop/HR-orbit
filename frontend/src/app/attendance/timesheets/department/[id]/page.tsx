@@ -3,10 +3,10 @@
 import { useCallback, useEffect, useState } from 'react';
 import { useParams } from 'next/navigation';
 import { api } from '@/lib/api';
-import { DataTable, type DataTableColumn } from '@/components/hr/DataTable';
 import { TimesheetStatusBadge } from '@/components/attendance/TimesheetStatusBadge';
+import { TimesheetGridTable } from '@/components/attendance/TimesheetGridTable';
 import { useAuthStore } from '@/store/authStore';
-import type { DepartmentTimesheet, EmployeeAttendanceSummaryLine } from '@/types/attendance';
+import type { DepartmentTimesheet } from '@/types/attendance';
 
 const MANAGE_ROLES = ['SUPER_ADMIN', 'HR_MANAGER', 'TIMEKEEPER'];
 
@@ -63,16 +63,8 @@ export default function DepartmentTimesheetDetailPage() {
     return <p className="text-sm text-stone-400">Yuklanmoqda...</p>;
   }
 
-  const columns: DataTableColumn<EmployeeAttendanceSummaryLine>[] = [
-    { key: 'employeeCode', header: 'ID', render: (r) => <span className="font-mono text-xs text-stone-500">{r.employeeCode}</span> },
-    { key: 'fullName', header: "F.I.Sh.", render: (r) => r.fullName },
-    { key: 'presentDays', header: 'Keldi', render: (r) => r.presentDays },
-    { key: 'lateDays', header: 'Kechikdi', render: (r) => r.lateDays },
-    { key: 'absentDays', header: 'Kelmadi', render: (r) => r.absentDays },
-    { key: 'onLeaveDays', header: "Ta'tilda", render: (r) => r.onLeaveDays },
-    { key: 'workedHours', header: 'Ishlagan (soat)', render: (r) => r.workedHours },
-    { key: 'overtimeHours', header: 'Overtime (soat)', render: (r) => r.overtimeHours },
-  ];
+  const daysInMonth = new Date(timesheet.year, timesheet.month, 0).getDate();
+  const isApproved = timesheet.status === 'DEPT_APPROVED' || timesheet.status === 'CONSOLIDATED';
 
   return (
     <div className="flex flex-col gap-4">
@@ -91,7 +83,7 @@ export default function DepartmentTimesheetDetailPage() {
       )}
       {error && <p className="rounded-md bg-rose-50 px-3 py-2 text-sm text-rose-700">{error}</p>}
 
-      <DataTable columns={columns} rows={timesheet.summaryData} rowKey={(r) => r.employeeId} emptyText="Xodim topilmadi" />
+      <TimesheetGridTable rows={timesheet.summaryData} daysInMonth={daysInMonth} isApproved={isApproved} />
 
       <div className="flex flex-wrap items-center gap-3">
         {canSubmit && timesheet.status === 'DRAFT' && (

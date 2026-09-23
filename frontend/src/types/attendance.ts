@@ -71,10 +71,17 @@ export interface AttendanceCorrection {
 export type DepartmentTimesheetStatus = 'DRAFT' | 'DEPT_SUBMITTED' | 'DEPT_APPROVED' | 'DEPT_REJECTED' | 'CONSOLIDATED';
 export type OrganizationTimesheetStatus = 'DRAFT' | 'SUBMITTED' | 'APPROVED' | 'REJECTED';
 
+export interface TimesheetDayCell {
+  day: number;
+  code: string; // "8" (ishlagan soat), "Д"/"К"/"С"/"М" (holat kodi), "В" (dam olish kuni), yoki "" (bo'sh)
+  hours: number | null;
+}
+
 export interface EmployeeAttendanceSummaryLine {
   employeeId: string;
   employeeCode: string;
   fullName: string;
+  positionName: string | null;
   presentDays: number;
   lateDays: number;
   earlyLeaveDays: number;
@@ -85,6 +92,7 @@ export interface EmployeeAttendanceSummaryLine {
   sickDays: number;
   workedHours: number;
   overtimeHours: number;
+  days: TimesheetDayCell[];
 }
 
 export interface DepartmentTimesheet {

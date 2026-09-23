@@ -1,7 +1,7 @@
 import type { RoleName } from '@prisma/client';
 import { prisma } from '@/config/prisma';
 import { AppError } from '@/common/errors/AppError';
-import { listActiveEmployeesForScope, getMyEmployee } from '@/modules/core-hr/employee.service';
+import { getMyEmployee } from '@/modules/core-hr/employee.service';
 import { canApproveOrgTimesheet, canManageAttendance } from './rbac';
 
 interface AuthContext {
@@ -21,10 +21,17 @@ async function assertCanManageDepartmentTimesheet(auth: AuthContext, departmentI
   throw AppError.forbidden();
 }
 
+interface DayCell {
+  day: number;
+  code: string; // "8" (ishlagan soat), "Д"/"К"/"С"/"М" (holat kodi), "В" (dam olish kuni), yoki "" (bo'sh)
+  hours: number | null; // faqat ishlagan kun uchun (workedMinutes/60, yaxlitlangan)
+}
+
 interface EmployeeSummaryLine {
   employeeId: string;
   employeeCode: string;
   fullName: string;
+  positionName: string | null;
   presentDays: number;
   lateDays: number;
   earlyLeaveDays: number;
@@ -35,12 +42,46 @@ interface EmployeeSummaryLine {
   sickDays: number;
   workedHours: number;
   overtimeHours: number;
+  days: DayCell[];
+}
+
+// 1С-uslubidagi tabel katakchasi uchun status -> kod xaritasi. Yozuv yo'q
+// va kun hafta oxiri (shanba/yakshanba) bo'lsa "В" — bayram kalendari
+// qurilmagani uchun faqat hafta kuni asosida aniqlanadi.
+function mapRecordToDayCell(day: number, date: Date, record: { status: string; workedMinutes: number } | undefined): DayCell {
+  if (!record) {
+    const dayOfWeek = date.getUTCDay(); // 0=yakshanba, 6=shanba
+    if (dayOfWeek === 0 || dayOfWeek === 6) {
+      return { day, code: 'В', hours: null };
+    }
+    return { day, code: '', hours: null };
+  }
+
+  switch (record.status) {
+    case 'PRESENT':
+    case 'LATE':
+    case 'EARLY_LEAVE': {
+      const hours = Math.round((record.workedMinutes / 60) * 10) / 10;
+      return { day, code: hours > 0 ? String(hours) : '8', hours };
+    }
+    case 'ON_LEAVE':
+      return { day, code: 'Д', hours: null };
+    case 'SICK':
+      return { day, code: 'К', hours: null };
+    case 'BUSINESS_TRIP':
+      return { day, code: 'С', hours: null };
+    case 'REMOTE':
+      return { day, code: 'М', hours: null };
+    case 'ABSENT':
+    default:
+      return { day, code: '', hours: null };
+  }
 }
 
 async function buildDepartmentSummary(organizationId: string, departmentId: string, year: number, month: number) {
   const employees = await prisma.employee.findMany({
     where: { organizationId, departmentId, status: 'ACTIVE' },
-    select: { id: true, employeeCode: true, fullName: true },
+    select: { id: true, employeeCode: true, fullName: true, position: { select: { name: true } } },
   });
 
   const start = new Date(Date.UTC(year, month - 1, 1));
@@ -59,12 +100,14 @@ async function buildDepartmentSummary(organizationId: string, departmentId: stri
 
   const summary: EmployeeSummaryLine[] = employees.map((employee) => {
     const employeeRecords = recordsByEmployee.get(employee.id) ?? [];
+    const recordByDay = new Map(employeeRecords.map((r) => [r.date.getUTCDate(), r]));
     const recordedDays = employeeRecords.length;
 
     const line: EmployeeSummaryLine = {
       employeeId: employee.id,
       employeeCode: employee.employeeCode,
       fullName: employee.fullName,
+      positionName: employee.position?.name ?? null,
       presentDays: 0,
       lateDays: 0,
       earlyLeaveDays: 0,
@@ -75,6 +118,7 @@ async function buildDepartmentSummary(organizationId: string, departmentId: stri
       sickDays: 0,
       workedHours: 0,
       overtimeHours: 0,
+      days: [],
     };
 
     for (const record of employeeRecords) {
@@ -112,6 +156,11 @@ async function buildDepartmentSummary(organizationId: string, departmentId: stri
 
     line.workedHours = Math.round(line.workedHours * 100) / 100;
     line.overtimeHours = Math.round(line.overtimeHours * 100) / 100;
+
+    for (let day = 1; day <= daysInMonth; day++) {
+      const date = new Date(Date.UTC(year, month - 1, day));
+      line.days.push(mapRecordToDayCell(day, date, recordByDay.get(day)));
+    }
 
     return line;
   });
