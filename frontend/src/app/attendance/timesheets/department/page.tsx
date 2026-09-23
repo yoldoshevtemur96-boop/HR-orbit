@@ -1,8 +1,11 @@
 'use client';
 
 import { useCallback, useEffect, useState } from 'react';
+import Link from 'next/link';
 import { api } from '@/lib/api';
 import { DepartmentTimesheetCard } from '@/components/attendance/DepartmentTimesheetCard';
+import { TimesheetStatusBadge } from '@/components/attendance/TimesheetStatusBadge';
+import { TimesheetGridTable } from '@/components/attendance/TimesheetGridTable';
 import { useAuthStore } from '@/store/authStore';
 import type { DepartmentTimesheet } from '@/types/attendance';
 import type { Department } from '@/types/core-hr';
@@ -25,6 +28,8 @@ export default function DepartmentTimesheetListPage() {
   const [{ year, month }, setYearMonth] = useState(currentYearMonth());
   const [isGenerating, setIsGenerating] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  const [showHistory, setShowHistory] = useState(false);
+  const [isSubmitting, setIsSubmitting] = useState(false);
 
   const load = useCallback(() => {
     api.get<DepartmentTimesheet[]>('/attendance/timesheets/department').then((res) => setTimesheets(res.data));
@@ -35,11 +40,12 @@ export default function DepartmentTimesheetListPage() {
   }, [load]);
 
   useEffect(() => {
+    if (isDeptHead) return;
     api.get('/hr/departments').then((res) => {
       setDepartments(res.data);
       if (res.data.length > 0) setDepartmentId((prev) => prev || res.data[0].id);
     });
-  }, []);
+  }, [isDeptHead]);
 
   // DEPARTMENT_HEAD uchun tugma bosish shart emas — sahifa ochilganda
   // joriy oy tabeli o'zi (fon rejimida) generatsiya qilinadi/yangilanadi.
@@ -79,18 +85,118 @@ export default function DepartmentTimesheetListPage() {
     }
   }
 
+  if (isDeptHead) {
+    const [currentTimesheet, ...pastTimesheets] = timesheets ?? [];
+    const daysInMonth = currentTimesheet ? new Date(currentTimesheet.year, currentTimesheet.month, 0).getDate() : 0;
+    const isApproved = currentTimesheet
+      ? currentTimesheet.status === 'DEPT_APPROVED' || currentTimesheet.status === 'CONSOLIDATED'
+      : false;
+
+    async function handleSubmit() {
+      if (!currentTimesheet) return;
+      setError(null);
+      setIsSubmitting(true);
+      try {
+        await api.post(`/attendance/timesheets/department/${currentTimesheet.id}/submit`);
+        load();
+      } catch (err: any) {
+        setError(err?.response?.data?.error?.message ?? 'Yuborishda xatolik yuz berdi');
+      } finally {
+        setIsSubmitting(false);
+      }
+    }
+
+    return (
+      <div className="flex flex-col gap-4">
+        <div className="flex items-center justify-between">
+          <div>
+            <p className="text-xs font-semibold uppercase tracking-wide text-accent">Attendance</p>
+            <h1 className="mt-1 font-display text-2xl font-semibold text-stone-900">Tuzilma tabeli</h1>
+          </div>
+          {pastTimesheets.length > 0 && (
+            <button
+              type="button"
+              onClick={() => setShowHistory((v) => !v)}
+              title="Eski tabellar tarixi"
+              aria-label="Eski tabellar tarixi"
+              className={`flex h-10 w-10 shrink-0 items-center justify-center rounded-lg border text-lg transition ${
+                showHistory
+                  ? 'border-accent bg-accent/10 text-accent'
+                  : 'border-stone-200 bg-white text-stone-500 hover:border-stone-300 hover:text-stone-800'
+              }`}
+            >
+              🕘
+            </button>
+          )}
+        </div>
+
+        {showHistory && pastTimesheets.length > 0 && (
+          <div className="flex flex-col gap-2 rounded-lg border border-stone-200 bg-stone-50 p-3">
+            <p className="text-xs font-medium uppercase tracking-wide text-stone-400">Oldingi tabellar</p>
+            {pastTimesheets.map((t) => (
+              <Link
+                key={t.id}
+                href={`/attendance/timesheets/department/${t.id}`}
+                className="flex items-center justify-between rounded-lg border border-stone-200 bg-white px-4 py-3 transition hover:border-stone-300"
+              >
+                <div>
+                  <p className="text-sm font-semibold text-stone-800">
+                    {t.year}-{String(t.month).padStart(2, '0')} tabeli
+                  </p>
+                  <p className="text-xs text-stone-400">{t.summaryData.length} xodim</p>
+                </div>
+                <TimesheetStatusBadge status={t.status} />
+              </Link>
+            ))}
+          </div>
+        )}
+
+        {timesheets === null ? (
+          <p className="text-sm text-stone-400">Yuklanmoqda...</p>
+        ) : !currentTimesheet ? (
+          <p className="text-sm text-stone-400">Hali tabel generatsiya qilinmagan.</p>
+        ) : (
+          <>
+            <div className="flex items-center justify-between">
+              <p className="text-sm font-semibold text-stone-800">
+                {currentTimesheet.year}-{String(currentTimesheet.month).padStart(2, '0')} tabeli
+              </p>
+              <TimesheetStatusBadge status={currentTimesheet.status} />
+            </div>
+
+            {currentTimesheet.rejectionComment && (
+              <p className="rounded-md bg-rose-50 px-3 py-2 text-sm text-rose-700">
+                Rad etish sababi: {currentTimesheet.rejectionComment}
+              </p>
+            )}
+            {error && <p className="rounded-md bg-rose-50 px-3 py-2 text-sm text-rose-700">{error}</p>}
+
+            <TimesheetGridTable rows={currentTimesheet.summaryData} daysInMonth={daysInMonth} isApproved={isApproved} />
+
+            {currentTimesheet.status === 'DRAFT' && (
+              <div>
+                <button
+                  type="button"
+                  disabled={isSubmitting}
+                  onClick={handleSubmit}
+                  className="rounded-lg bg-accent px-4 py-2.5 text-sm font-semibold text-white transition hover:opacity-90 disabled:opacity-50"
+                >
+                  HR&apos;ga yuborish
+                </button>
+              </div>
+            )}
+          </>
+        )}
+      </div>
+    );
+  }
+
   return (
     <div className="flex flex-col gap-4">
       <div>
         <p className="text-xs font-semibold uppercase tracking-wide text-accent">Attendance</p>
-        <h1 className="mt-1 font-display text-2xl font-semibold text-stone-900">Bo&apos;lim tabellari</h1>
+        <h1 className="mt-1 font-display text-2xl font-semibold text-stone-900">Tuzilma tabeli</h1>
       </div>
-
-      {isDeptHead && (
-        <p className="rounded-lg border border-stone-200 bg-stone-50 px-4 py-3 text-sm text-stone-600">
-          Joriy oy tabeli avtomatik tayyorlandi — quyidagi ro&apos;yxatdan oching va HR&apos;ga yuboring.
-        </p>
-      )}
 
       {canGenerate && (
         <form onSubmit={handleGenerate} className="flex flex-wrap items-end gap-3 rounded-lg border border-stone-200 bg-white p-4">

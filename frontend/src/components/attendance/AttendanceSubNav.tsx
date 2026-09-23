@@ -16,7 +16,7 @@ interface Tab {
 const TABS: Tab[] = [
   { label: 'Kunlik davomat', href: '/attendance/daily', roles: [...MANAGE_ROLES, 'DEPARTMENT_HEAD'] },
   { label: 'Mening davomatim', href: '/attendance/my' },
-  { label: "Bo'lim tabellari", href: '/attendance/timesheets/department', roles: [...MANAGE_ROLES, 'DEPARTMENT_HEAD'] },
+  { label: 'Tuzilma tabeli', href: '/attendance/timesheets/department', roles: [...MANAGE_ROLES, 'DEPARTMENT_HEAD'] },
   { label: 'Tashkilot tabeli', href: '/attendance/timesheets/organization', roles: MANAGE_ROLES },
   { label: 'Sozlamalar', href: '/attendance/settings', roles: MANAGE_ROLES },
 ];

@@ -5,7 +5,7 @@ export const ROLE_LABEL: Record<RoleName, string> = {
   HR_MANAGER: 'HR menejer',
   HR_SPECIALIST: 'HR mutaxassisi',
   RECRUITER: 'Rekruter',
-  DEPARTMENT_HEAD: "Bo'lim boshlig'i",
+  DEPARTMENT_HEAD: 'Departament rahbari',
   EMPLOYEE: 'Xodim',
   TIMEKEEPER: 'Tabelchi',
 };
