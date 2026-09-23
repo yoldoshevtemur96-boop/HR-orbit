@@ -17,6 +17,7 @@ function currentYearMonth() {
 export default function DepartmentTimesheetListPage() {
   const user = useAuthStore((s) => s.user);
   const canGenerate = user ? MANAGE_ROLES.includes(user.role) : false;
+  const isDeptHead = user?.role === 'DEPARTMENT_HEAD';
 
   const [timesheets, setTimesheets] = useState<DepartmentTimesheet[] | null>(null);
   const [departments, setDepartments] = useState<Department[]>([]);
@@ -39,6 +40,27 @@ export default function DepartmentTimesheetListPage() {
       if (res.data.length > 0) setDepartmentId((prev) => prev || res.data[0].id);
     });
   }, []);
+
+  // DEPARTMENT_HEAD uchun tugma bosish shart emas — sahifa ochilganda
+  // joriy oy tabeli o'zi (fon rejimida) generatsiya qilinadi/yangilanadi.
+  // Agar tabel allaqachon yuborilgan bo'lsa (DEPT_SUBMITTED+), backend
+  // xato qaytaradi — bu holat kutilgan, shuning uchun jim yutiladi.
+  useEffect(() => {
+    if (!isDeptHead) return;
+    const { year: y, month: m } = currentYearMonth();
+    api
+      .get<{ departmentId: string | null }>('/hr/employees/me')
+      .then((res) => {
+        if (!res.data.departmentId) return;
+        return api.post('/attendance/timesheets/department/generate', {
+          departmentId: res.data.departmentId,
+          year: y,
+          month: m,
+        });
+      })
+      .catch(() => {})
+      .finally(() => load());
+  }, [isDeptHead, load]);
 
   const departmentNameById = new Map(departments.map((d) => [d.id, d.name]));
 
@@ -63,6 +85,12 @@ export default function DepartmentTimesheetListPage() {
         <p className="text-xs font-semibold uppercase tracking-wide text-accent">Attendance</p>
         <h1 className="mt-1 font-display text-2xl font-semibold text-stone-900">Bo&apos;lim tabellari</h1>
       </div>
+
+      {isDeptHead && (
+        <p className="rounded-lg border border-stone-200 bg-stone-50 px-4 py-3 text-sm text-stone-600">
+          Joriy oy tabeli avtomatik tayyorlandi — quyidagi ro&apos;yxatdan oching va HR&apos;ga yuboring.
+        </p>
+      )}
 
       {canGenerate && (
         <form onSubmit={handleGenerate} className="flex flex-wrap items-end gap-3 rounded-lg border border-stone-200 bg-white p-4">

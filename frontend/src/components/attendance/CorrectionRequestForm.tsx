@@ -16,12 +16,23 @@ function todayIso(): string {
 }
 
 interface CorrectionRequestFormProps {
+  employeeId: string;
+  employeeName: string;
   onCreated: () => void;
   presetDate?: string;
   presetReasonType?: CorrectionReasonType;
 }
 
-export function CorrectionRequestForm({ onCreated, presetDate, presetReasonType }: CorrectionRequestFormProps) {
+// Faqat departament rahbari ishlatadi — bitta oldindan tanlangan xodim
+// uchun tuzatish so'rovi yuboradi (xodim tanlash select'i yo'q, chunki
+// forma har doim aniq bitta xodim konteksti bilan ochiladi).
+export function CorrectionRequestForm({
+  employeeId,
+  employeeName,
+  onCreated,
+  presetDate,
+  presetReasonType,
+}: CorrectionRequestFormProps) {
   const [date, setDate] = useState(presetDate ?? todayIso());
   const [reasonType, setReasonType] = useState<CorrectionReasonType>(presetReasonType ?? 'WRONG_CHECK_IN');
   const [requestedCheckIn, setRequestedCheckIn] = useState('');
@@ -36,6 +47,7 @@ export function CorrectionRequestForm({ onCreated, presetDate, presetReasonType 
     setIsSubmitting(true);
     try {
       await api.post('/attendance/corrections', {
+        employeeId,
         date,
         reasonType,
         requestedCheckIn: requestedCheckIn ? new Date(`${date}T${requestedCheckIn}:00`).toISOString() : undefined,
@@ -52,6 +64,11 @@ export function CorrectionRequestForm({ onCreated, presetDate, presetReasonType 
 
   return (
     <form onSubmit={handleSubmit} className="flex flex-col gap-4">
+      <div>
+        <label className="mb-1 block text-xs font-medium text-stone-500">Xodim</label>
+        <p className="rounded-lg border border-stone-200 bg-stone-50 px-3 py-2 text-sm text-stone-700">{employeeName}</p>
+      </div>
+
       <div>
         <label className="mb-1 block text-xs font-medium text-stone-500">Sana</label>
         <input

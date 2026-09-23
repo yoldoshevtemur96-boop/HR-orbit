@@ -4,11 +4,17 @@ import { useCallback, useEffect, useState } from 'react';
 import { api } from '@/lib/api';
 import { DataTable, type DataTableColumn } from '@/components/hr/DataTable';
 import { FilterBar } from '@/components/hr/FilterBar';
+import { Modal } from '@/components/hr/Modal';
 import { AttendanceDayStatusBadge } from '@/components/attendance/AttendanceDayStatusBadge';
 import { AttendanceRecordEditDrawer } from '@/components/attendance/AttendanceRecordEditDrawer';
+import { CorrectionRequestForm } from '@/components/attendance/CorrectionRequestForm';
 import { useAuthStore } from '@/store/authStore';
-import type { DailyAttendanceRow } from '@/types/attendance';
+import type { AttendanceDayStatus, DailyAttendanceRow } from '@/types/attendance';
 import type { Department } from '@/types/core-hr';
+
+// Faqat shu holatlarda tuzatish so'rovi ma'noga ega — kelmagan/kechikkan
+// kunlar uchun. Ta'til, safar va h.k. HR/tabelchi tomonidan qo'yiladi.
+const CORRECTABLE_STATUSES: AttendanceDayStatus[] = ['LATE', 'ABSENT', 'EARLY_LEAVE'];
 
 function todayIso(): string {
   const d = new Date();
@@ -24,6 +30,7 @@ function formatTime(iso: string | null): string {
 export default function DailyAttendancePage() {
   const user = useAuthStore((s) => s.user);
   const canManage = user ? ['SUPER_ADMIN', 'HR_MANAGER', 'TIMEKEEPER'].includes(user.role) : false;
+  const canRequestCorrection = user?.role === 'DEPARTMENT_HEAD';
 
   const [date, setDate] = useState(todayIso());
   const [departmentId, setDepartmentId] = useState('');
@@ -32,6 +39,7 @@ export default function DailyAttendancePage() {
   const [isLoading, setIsLoading] = useState(true);
   const [search, setSearch] = useState('');
   const [selectedRow, setSelectedRow] = useState<DailyAttendanceRow | null>(null);
+  const [correctionRow, setCorrectionRow] = useState<DailyAttendanceRow | null>(null);
 
   useEffect(() => {
     if (canManage) {
@@ -66,21 +74,39 @@ export default function DailyAttendancePage() {
     { key: 'late', header: 'Kechikish (daq)', render: (r) => r.record?.lateMinutes ?? 0 },
     { key: 'overtime', header: 'Overtime (daq)', render: (r) => r.record?.overtimeMinutes ?? 0 },
     { key: 'note', header: 'Izoh', render: (r) => r.record?.note ?? '—' },
-    ...(canManage
+    ...(canManage || canRequestCorrection
       ? [
           {
             key: 'actions',
             header: '',
             align: 'right' as const,
-            render: (r: DailyAttendanceRow) => (
-              <button
-                type="button"
-                onClick={() => setSelectedRow(r)}
-                className="rounded-md border border-stone-200 px-2.5 py-1 text-xs font-medium text-stone-600 hover:bg-stone-50"
-              >
-                Tuzatish
-              </button>
-            ),
+            render: (r: DailyAttendanceRow) => {
+              const status = r.record?.status ?? 'ABSENT';
+              return (
+                <div className="inline-flex items-center gap-1.5">
+                  {canManage && (
+                    <button
+                      type="button"
+                      onClick={() => setSelectedRow(r)}
+                      className="rounded-md border border-stone-200 px-2.5 py-1 text-xs font-medium text-stone-600 hover:bg-stone-50"
+                    >
+                      Tuzatish
+                    </button>
+                  )}
+                  {canRequestCorrection && CORRECTABLE_STATUSES.includes(status) && (
+                    <button
+                      type="button"
+                      onClick={() => setCorrectionRow(r)}
+                      aria-label={`${r.employee.fullName} uchun tuzatish so'rovi`}
+                      title="Tuzatish so'rovi yuborish"
+                      className="rounded-md p-1.5 text-stone-400 transition hover:bg-stone-100 hover:text-accent"
+                    >
+                      ✏️
+                    </button>
+                  )}
+                </div>
+              );
+            },
           },
         ]
       : []),
@@ -139,6 +165,24 @@ export default function DailyAttendancePage() {
           load();
         }}
       />
+
+      <Modal
+        isOpen={correctionRow !== null}
+        title={`Tuzatish so'rovi — ${correctionRow?.employee.fullName ?? ''}`}
+        onClose={() => setCorrectionRow(null)}
+      >
+        {correctionRow && (
+          <CorrectionRequestForm
+            employeeId={correctionRow.employee.id}
+            employeeName={correctionRow.employee.fullName}
+            presetDate={date}
+            onCreated={() => {
+              setCorrectionRow(null);
+              load();
+            }}
+          />
+        )}
+      </Modal>
     </div>
   );
 }

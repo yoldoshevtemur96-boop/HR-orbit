@@ -10,6 +10,17 @@ interface AuthContext {
   role: RoleName;
 }
 
+// Departament rahbari faqat o'z bo'limi tabelini generatsiya/yuborishi
+// mumkin — HR/Timekeeper istalgan bo'lim uchun qila oladi.
+async function assertCanManageDepartmentTimesheet(auth: AuthContext, departmentId: string) {
+  if (canManageAttendance(auth.role)) return;
+  if (auth.role === 'DEPARTMENT_HEAD') {
+    const self = await getMyEmployee(auth);
+    if (self.departmentId === departmentId) return;
+  }
+  throw AppError.forbidden();
+}
+
 interface EmployeeSummaryLine {
   employeeId: string;
   employeeCode: string;
@@ -119,9 +130,7 @@ interface GenerateDepartmentTimesheetInput {
 // (submit qilingandan keyin qayta generatsiya taqiqlanadi, chunki
 // DEPARTMENT_HEAD allaqachon ko'rib chiqayotgan bo'lishi mumkin).
 export async function generateDepartmentTimesheet(input: GenerateDepartmentTimesheetInput) {
-  if (!canManageAttendance(input.auth.role)) {
-    throw AppError.forbidden();
-  }
+  await assertCanManageDepartmentTimesheet(input.auth, input.departmentId);
 
   const existing = await prisma.departmentTimesheet.findUnique({
     where: {
@@ -167,10 +176,8 @@ export async function generateDepartmentTimesheet(input: GenerateDepartmentTimes
 }
 
 export async function submitDepartmentTimesheet(auth: AuthContext, timesheetId: string) {
-  if (!canManageAttendance(auth.role)) {
-    throw AppError.forbidden();
-  }
   const timesheet = await getDepartmentTimesheetOrThrow(auth.organizationId, timesheetId);
+  await assertCanManageDepartmentTimesheet(auth, timesheet.departmentId);
   if (timesheet.status !== 'DRAFT') {
     throw AppError.badRequest('Faqat qoralama holatidagi tabel yuborilishi mumkin');
   }
@@ -180,24 +187,21 @@ export async function submitDepartmentTimesheet(auth: AuthContext, timesheetId: 
   });
 }
 
+// Endi faqat HR_MANAGER/TIMEKEEPER/SUPER_ADMIN tasdiqlaydi — DEPARTMENT_HEAD
+// generate+submit qilgani uchun (o'z-o'ziga tasdiqlash bo'lib qolmasligi uchun).
 export async function decideDepartmentTimesheet(
   auth: AuthContext,
   timesheetId: string,
   decision: 'APPROVED' | 'REJECTED',
   rejectionComment?: string,
 ) {
+  if (!canManageAttendance(auth.role)) {
+    throw AppError.forbidden();
+  }
+
   const timesheet = await getDepartmentTimesheetOrThrow(auth.organizationId, timesheetId);
   if (timesheet.status !== 'DEPT_SUBMITTED') {
     throw AppError.badRequest("Bu tabel hozir tasdiqlash kutilayotgan holatda emas");
-  }
-
-  if (auth.role === 'DEPARTMENT_HEAD') {
-    const self = await getMyEmployee(auth);
-    if (self.departmentId !== timesheet.departmentId) {
-      throw AppError.forbidden("Faqat o'z bo'limingiz tabelini tasdiqlay olasiz");
-    }
-  } else if (!canManageAttendance(auth.role)) {
-    throw AppError.forbidden();
   }
 
   if (decision === 'REJECTED') {

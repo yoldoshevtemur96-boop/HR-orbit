@@ -1,10 +1,10 @@
 import type { CorrectionReasonType, RoleName } from '@prisma/client';
 import { prisma } from '@/config/prisma';
 import { AppError } from '@/common/errors/AppError';
-import { getMyEmployee } from '@/modules/core-hr/employee.service';
+import { getEmployeeById } from '@/modules/core-hr/employee.service';
 import * as workflowInstanceService from '@/modules/workflow/instance.service';
-import { upsertAttendanceRecord } from './attendanceRecord.service';
-import { canManageAttendance } from './rbac';
+import { assertCanViewEmployeeAttendance, upsertAttendanceRecord } from './attendanceRecord.service';
+import { canManageAttendance, canSubmitCorrection } from './rbac';
 
 interface AuthContext {
   userId: string;
@@ -12,7 +12,10 @@ interface AuthContext {
   role: RoleName;
 }
 
-const CORRECTION_TEMPLATE_NAME = "Davomat tuzatish so'rovi";
+// Departament rahbari o'z xodimi uchun so'rov yuboradi — u o'zi allaqachon
+// "bevosita rahbar" bo'lgani uchun DIRECT_MANAGER bosqichi keraksiz,
+// zanjir to'g'ridan-to'g'ri ROLE:TIMEKEEPER'dan boshlanadi.
+const CORRECTION_TEMPLATE_NAME = "Davomat tuzatish so'rovi (rahbar tomonidan)";
 
 async function getCorrectionTemplate(organizationId: string) {
   const template = await prisma.workflowTemplate.findFirst({
@@ -26,6 +29,7 @@ async function getCorrectionTemplate(organizationId: string) {
 
 interface SubmitCorrectionInput {
   auth: AuthContext;
+  employeeId: string;
   date: Date;
   reasonType: CorrectionReasonType;
   requestedCheckIn?: Date;
@@ -33,20 +37,30 @@ interface SubmitCorrectionInput {
   comment?: string;
 }
 
-// Xodim o'zi uchun davomat tuzatish so'rovi yuboradi — Workflow Engine
-// qayta ishlatiladi (DIRECT_MANAGER -> ROLE:TIMEKEEPER zanjiri).
+// Departament rahbari o'z bo'limi xodimi uchun davomat tuzatish so'rovi
+// yuboradi. Zanjir bitta bosqichli (ROLE:TIMEKEEPER) bo'lgani uchun
+// AttendanceCorrection darhol PENDING_TIMEKEEPER holatida yaratiladi.
 export async function submitCorrection(input: SubmitCorrectionInput) {
-  const self = await getMyEmployee(input.auth);
+  if (!canSubmitCorrection(input.auth.role)) {
+    throw AppError.forbidden("Faqat departament rahbari tuzatish so'rovi yubora oladi");
+  }
+
+  await assertCanViewEmployeeAttendance(input.auth, input.employeeId);
+  const targetEmployee = await getEmployeeById(input.auth, input.employeeId);
   const template = await getCorrectionTemplate(input.auth.organizationId);
 
   const existingRecord = await prisma.attendanceRecord.findUnique({
     where: {
-      organizationId_employeeId_date: { organizationId: input.auth.organizationId, employeeId: self.id, date: input.date },
+      organizationId_employeeId_date: {
+        organizationId: input.auth.organizationId,
+        employeeId: input.employeeId,
+        date: input.date,
+      },
     },
   });
 
   const formData = {
-    employeeName: self.fullName,
+    employeeName: targetEmployee.fullName,
     date: input.date.toISOString().slice(0, 10),
     reasonType: input.reasonType,
     requestedCheckIn: input.requestedCheckIn?.toISOString() ?? '',
@@ -58,82 +72,68 @@ export async function submitCorrection(input: SubmitCorrectionInput) {
     organizationId: input.auth.organizationId,
     templateId: template.id,
     initiatorUserId: input.auth.userId,
-    employeeId: self.id,
+    employeeId: input.employeeId,
     formData,
   });
 
   return prisma.attendanceCorrection.create({
     data: {
       organizationId: input.auth.organizationId,
-      employeeId: self.id,
+      employeeId: input.employeeId,
       attendanceRecordId: existingRecord?.id,
       date: input.date,
       reasonType: input.reasonType,
       requestedCheckIn: input.requestedCheckIn,
       requestedCheckOut: input.requestedCheckOut,
       comment: input.comment,
-      status: 'PENDING_MANAGER',
+      status: 'PENDING_TIMEKEEPER',
       workflowInstanceId: instance.id,
     },
   });
 }
 
-// DIRECT_MANAGER bosqichi Workflow Engine'ning umumiy /decide endpoint'i
-// orqali o'tadi (Attendance'ga tegmasdan) — shuning uchun Attendance'dagi
-// status shu yerda "o'qishda" WorkflowInstance holatiga solishtirilib
-// yangilanadi. Bu Workflow Engine'ga Attendance haqida hech narsa
-// import/bilishga majbur qilmasdan ikki modulni sinxron ushlab turadi.
-async function syncPendingManagerCorrections(organizationId: string, corrections: Array<{ id: string; workflowInstanceId: string | null }>) {
-  const pending = corrections.filter((c) => c.workflowInstanceId);
-  if (pending.length === 0) return;
+// Departament rahbari yuborgan so'rovlar ro'yxati uchun xodim ismini ham
+// qo'shib beradi (frontend'da alohida so'rov yubormasdan ko'rsatish uchun).
+async function attachEmployeeInfo(auth: AuthContext, corrections: Array<{ employeeId: string }> & any[]) {
+  const employeeIds = [...new Set(corrections.map((c) => c.employeeId))];
+  if (employeeIds.length === 0) return corrections;
 
-  await Promise.all(
-    pending.map(async (correction) => {
-      const instance = await workflowInstanceService.getInstanceById(organizationId, correction.workflowInstanceId!);
-      if (instance.status === 'REJECTED') {
-        await prisma.attendanceCorrection.update({ where: { id: correction.id }, data: { status: 'REJECTED' } });
-      } else if (instance.currentStepOrder > 1 || instance.status === 'APPROVED') {
-        await prisma.attendanceCorrection.update({ where: { id: correction.id }, data: { status: 'PENDING_TIMEKEEPER' } });
-      }
-    }),
-  );
+  const employees = await prisma.employee.findMany({
+    where: { organizationId: auth.organizationId, id: { in: employeeIds } },
+    select: { id: true, fullName: true, employeeCode: true },
+  });
+  const employeeById = new Map(employees.map((e) => [e.id, e]));
+
+  return corrections.map((c) => ({ ...c, employee: employeeById.get(c.employeeId) ?? null }));
 }
 
+// Departament rahbari o'zi yuborgan so'rovlar ro'yxati — WorkflowInstance
+// orqali bog'langan (Attendance'da alohida "kim yubordi" maydoni yo'q,
+// workflowInstance.initiatorUserId shu ma'lumotni allaqachon saqlaydi).
 export async function listMyCorrections(auth: AuthContext) {
-  const self = await getMyEmployee(auth);
   const corrections = await prisma.attendanceCorrection.findMany({
-    where: { organizationId: auth.organizationId, employeeId: self.id },
+    where: {
+      organizationId: auth.organizationId,
+      workflowInstance: { initiatorUserId: auth.userId },
+    },
     orderBy: { createdAt: 'desc' },
   });
 
-  await syncPendingManagerCorrections(
-    auth.organizationId,
-    corrections.filter((c) => c.status === 'PENDING_MANAGER'),
-  );
-
-  return prisma.attendanceCorrection.findMany({
-    where: { organizationId: auth.organizationId, employeeId: self.id },
-    orderBy: { createdAt: 'desc' },
-  });
+  return attachEmployeeInfo(auth, corrections);
 }
 
-// "Menga kelgan" — HR tabelchi uchun oxirgi (TIMEKEEPER) bosqichda turgan
-// so'rovlar. Oraliq (DIRECT_MANAGER) bosqichi Workflow Engine'ning umumiy
-// "/workflow/instances/pending-for-me" orqali ko'rinadi, bu yerga tegishli emas.
+// "Menga kelgan" — HR tabelchi uchun ROLE:TIMEKEEPER bosqichida turgan so'rovlar.
 export async function listPendingCorrections(auth: AuthContext) {
   if (!canManageAttendance(auth.role)) {
     throw AppError.forbidden();
   }
 
-  const stillPendingManager = await prisma.attendanceCorrection.findMany({
-    where: { organizationId: auth.organizationId, status: 'PENDING_MANAGER' },
-  });
-  await syncPendingManagerCorrections(auth.organizationId, stillPendingManager);
-
-  return prisma.attendanceCorrection.findMany({
+  const corrections = await prisma.attendanceCorrection.findMany({
     where: { organizationId: auth.organizationId, status: 'PENDING_TIMEKEEPER' },
     orderBy: { createdAt: 'asc' },
   });
+
+  return attachEmployeeInfo(auth, corrections);
 }
 
 // HR tabelchi so'rovni yakuniy tasdiqlaydi/rad etadi. Workflow'ning oxirgi

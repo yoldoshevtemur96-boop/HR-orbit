@@ -154,7 +154,9 @@ export async function listDailyAttendance(input: ListDailyAttendanceInput) {
 }
 
 // Resurs-scope tekshiruvi: o'zi, o'z bo'limi (DEPARTMENT_HEAD), yoki HR/Timekeeper.
-async function assertCanViewEmployeeAttendance(auth: AuthContext, employeeId: string) {
+// correction.service.ts ham shu funksiyani qayta ishlatadi — DEPARTMENT_HEAD
+// faqat o'z bo'limi xodimi uchun tuzatish so'rovi yubora olishini tekshirish uchun.
+export async function assertCanViewEmployeeAttendance(auth: AuthContext, employeeId: string) {
   if (canManageAttendance(auth.role)) return;
 
   const self = await getMyEmployee(auth).catch(() => null);

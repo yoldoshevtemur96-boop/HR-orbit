@@ -2,8 +2,6 @@
 
 import { useCallback, useEffect, useState } from 'react';
 import { api } from '@/lib/api';
-import { Drawer } from '@/components/hr/Drawer';
-import { CorrectionRequestForm } from '@/components/attendance/CorrectionRequestForm';
 import { CorrectionStatusBadge } from '@/components/attendance/CorrectionStatusBadge';
 import { useAuthStore } from '@/store/authStore';
 import type { AttendanceCorrection } from '@/types/attendance';
@@ -20,21 +18,27 @@ function formatTime(iso: string | null): string {
   return `${String(d.getHours()).padStart(2, '0')}:${String(d.getMinutes()).padStart(2, '0')}`;
 }
 
+// Bu sahifa endi ikki auditoriya uchun: DEPARTMENT_HEAD o'zi yuborgan
+// so'rovlarni kuzatadi ("Men yuborganlar"), HR/Timekeeper esa o'ziga
+// kelgan so'rovlarni tasdiqlaydi/rad etadi ("Menga kelgan"). Yangi so'rov
+// endi faqat /attendance/daily'dagi qalam (✏️) tugmasi orqali yuboriladi.
 export default function CorrectionsPage() {
   const user = useAuthStore((s) => s.user);
   const canManage = user ? ['SUPER_ADMIN', 'HR_MANAGER', 'TIMEKEEPER'].includes(user.role) : false;
+  const isDeptHead = user?.role === 'DEPARTMENT_HEAD';
 
   const [mine, setMine] = useState<AttendanceCorrection[] | null>(null);
   const [pending, setPending] = useState<AttendanceCorrection[] | null>(null);
-  const [isDrawerOpen, setIsDrawerOpen] = useState(false);
   const [actioningId, setActioningId] = useState<string | null>(null);
 
   const load = useCallback(() => {
-    api.get<AttendanceCorrection[]>('/attendance/corrections/mine').then((res) => setMine(res.data));
+    if (isDeptHead) {
+      api.get<AttendanceCorrection[]>('/attendance/corrections/mine').then((res) => setMine(res.data));
+    }
     if (canManage) {
       api.get<AttendanceCorrection[]>('/attendance/corrections/pending').then((res) => setPending(res.data));
     }
-  }, [canManage]);
+  }, [canManage, isDeptHead]);
 
   useEffect(() => {
     load();
@@ -52,18 +56,9 @@ export default function CorrectionsPage() {
 
   return (
     <div className="flex flex-col gap-6">
-      <div className="flex items-center justify-between">
-        <div>
-          <p className="text-xs font-semibold uppercase tracking-wide text-accent">Attendance</p>
-          <h1 className="mt-1 font-display text-2xl font-semibold text-stone-900">Davomat tuzatish so&apos;rovlari</h1>
-        </div>
-        <button
-          type="button"
-          onClick={() => setIsDrawerOpen(true)}
-          className="rounded-lg bg-accent px-4 py-2.5 text-sm font-semibold text-white transition hover:opacity-90"
-        >
-          + Yangi so&apos;rov
-        </button>
+      <div>
+        <p className="text-xs font-semibold uppercase tracking-wide text-accent">Attendance</p>
+        <h1 className="mt-1 font-display text-2xl font-semibold text-stone-900">Davomat tuzatish so&apos;rovlari</h1>
       </div>
 
       {canManage && (
@@ -79,6 +74,7 @@ export default function CorrectionsPage() {
                 <tbody>
                   {pending.map((c) => (
                     <tr key={c.id} className="border-b border-stone-100 last:border-0">
+                      <td className="px-4 py-3 font-medium text-stone-800">{c.employee?.fullName ?? '—'}</td>
                       <td className="px-4 py-3 text-stone-700">{c.date.slice(0, 10)}</td>
                       <td className="px-4 py-3 text-stone-500">{REASON_LABEL[c.reasonType]}</td>
                       <td className="px-4 py-3 text-stone-500">
@@ -113,42 +109,38 @@ export default function CorrectionsPage() {
         </div>
       )}
 
-      <div>
-        <h2 className="mb-2 text-sm font-semibold text-stone-700">Mening so&apos;rovlarim</h2>
-        <div className="overflow-hidden rounded-lg border border-stone-200 bg-white">
-          {mine === null ? (
-            <p className="p-5 text-sm text-stone-400">Yuklanmoqda...</p>
-          ) : mine.length === 0 ? (
-            <p className="p-5 text-sm text-stone-400">Hali so&apos;rov yubormagansiz.</p>
-          ) : (
-            <table className="w-full text-sm">
-              <tbody>
-                {mine.map((c) => (
-                  <tr key={c.id} className="border-b border-stone-100 last:border-0">
-                    <td className="px-4 py-3 text-stone-700">{c.date.slice(0, 10)}</td>
-                    <td className="px-4 py-3 text-stone-500">{REASON_LABEL[c.reasonType]}</td>
-                    <td className="px-4 py-3 text-stone-500">
-                      {formatTime(c.requestedCheckIn)} — {formatTime(c.requestedCheckOut)}
-                    </td>
-                    <td className="px-4 py-3 text-right">
-                      <CorrectionStatusBadge status={c.status} />
-                    </td>
-                  </tr>
-                ))}
-              </tbody>
-            </table>
-          )}
+      {isDeptHead && (
+        <div>
+          <h2 className="mb-2 text-sm font-semibold text-stone-700">Men yuborgan so&apos;rovlar</h2>
+          <div className="overflow-hidden rounded-lg border border-stone-200 bg-white">
+            {mine === null ? (
+              <p className="p-5 text-sm text-stone-400">Yuklanmoqda...</p>
+            ) : mine.length === 0 ? (
+              <p className="p-5 text-sm text-stone-400">
+                Hali so&apos;rov yubormagansiz — kunlik davomat jadvalidagi ✏️ tugmasi orqali yuboring.
+              </p>
+            ) : (
+              <table className="w-full text-sm">
+                <tbody>
+                  {mine.map((c) => (
+                    <tr key={c.id} className="border-b border-stone-100 last:border-0">
+                      <td className="px-4 py-3 font-medium text-stone-800">{c.employee?.fullName ?? '—'}</td>
+                      <td className="px-4 py-3 text-stone-700">{c.date.slice(0, 10)}</td>
+                      <td className="px-4 py-3 text-stone-500">{REASON_LABEL[c.reasonType]}</td>
+                      <td className="px-4 py-3 text-stone-500">
+                        {formatTime(c.requestedCheckIn)} — {formatTime(c.requestedCheckOut)}
+                      </td>
+                      <td className="px-4 py-3 text-right">
+                        <CorrectionStatusBadge status={c.status} />
+                      </td>
+                    </tr>
+                  ))}
+                </tbody>
+              </table>
+            )}
+          </div>
         </div>
-      </div>
-
-      <Drawer isOpen={isDrawerOpen} title="Davomat tuzatish so'rovi" onClose={() => setIsDrawerOpen(false)}>
-        <CorrectionRequestForm
-          onCreated={() => {
-            setIsDrawerOpen(false);
-            load();
-          }}
-        />
-      </Drawer>
+      )}
     </div>
   );
 }

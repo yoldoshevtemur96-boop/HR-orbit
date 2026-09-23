@@ -104,6 +104,7 @@ attendanceRouter.get('/records/employee/:employeeId', async (req, res) => {
 // ---------------------------------------------------------------------------
 
 const submitCorrectionSchema = z.object({
+  employeeId: z.string().min(1),
   date: z.coerce.date(),
   reasonType: z.enum(['DEVICE_FAILURE', 'WRONG_CHECK_IN', 'WRONG_CHECK_OUT']),
   requestedCheckIn: z.coerce.date().optional(),
@@ -111,7 +112,7 @@ const submitCorrectionSchema = z.object({
   comment: z.string().optional(),
 });
 
-attendanceRouter.post('/corrections', async (req, res) => {
+attendanceRouter.post('/corrections', requireRole('DEPARTMENT_HEAD'), async (req, res) => {
   const input = submitCorrectionSchema.parse(req.body);
   const correction = await correctionService.submitCorrection({ auth: req.auth!, ...input });
   res.status(201).json(correction);
@@ -166,7 +167,7 @@ const decideTimesheetSchema = z.object({
 
 attendanceRouter.post(
   '/timesheets/department/:id/decide',
-  requireRole('SUPER_ADMIN', 'HR_MANAGER', 'TIMEKEEPER', 'DEPARTMENT_HEAD'),
+  requireRole('SUPER_ADMIN', 'HR_MANAGER', 'TIMEKEEPER'),
   async (req, res) => {
     const { decision, rejectionComment } = decideTimesheetSchema.parse(req.body);
     const timesheet = await timesheetService.decideDepartmentTimesheet(req.auth!, req.params.id, decision, rejectionComment);

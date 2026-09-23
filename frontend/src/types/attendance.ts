@@ -65,6 +65,7 @@ export interface AttendanceCorrection {
   status: CorrectionStatus;
   workflowInstanceId: string | null;
   createdAt: string;
+  employee?: { id: string; fullName: string; employeeCode: string } | null;
 }
 
 export type DepartmentTimesheetStatus = 'DRAFT' | 'DEPT_SUBMITTED' | 'DEPT_APPROVED' | 'DEPT_REJECTED' | 'CONSOLIDATED';

@@ -1,12 +1,9 @@
 'use client';
 
 import { useCallback, useEffect, useState } from 'react';
-import Link from 'next/link';
 import { api } from '@/lib/api';
-import { Modal } from '@/components/hr/Modal';
 import { AttendanceDayStatusBadge } from '@/components/attendance/AttendanceDayStatusBadge';
 import { MonthlyCalendarView } from '@/components/attendance/MonthlyCalendarView';
-import { CorrectionRequestForm } from '@/components/attendance/CorrectionRequestForm';
 import type { AttendanceRecord } from '@/types/attendance';
 
 function formatTime(iso: string | null): string {
@@ -22,7 +19,6 @@ export default function MyAttendancePage() {
   const [today, setToday] = useState<AttendanceRecord | null>(null);
   const [records, setRecords] = useState<AttendanceRecord[]>([]);
   const [isLoading, setIsLoading] = useState(true);
-  const [correctionDate, setCorrectionDate] = useState<string | null>(null);
 
   useEffect(() => {
     api.get<AttendanceRecord | null>('/attendance/records/me/today').then((res) => setToday(res.data));
@@ -48,17 +44,9 @@ export default function MyAttendancePage() {
 
   return (
     <div className="flex flex-col gap-4">
-      <div className="flex items-center justify-between">
-        <div>
-          <p className="text-xs font-semibold uppercase tracking-wide text-accent">Attendance</p>
-          <h1 className="mt-1 font-display text-2xl font-semibold text-stone-900">Mening davomatim</h1>
-        </div>
-        <Link
-          href="/attendance/corrections"
-          className="rounded-lg bg-accent px-4 py-2.5 text-sm font-semibold text-white transition hover:opacity-90"
-        >
-          + Tuzatish so&apos;rovi
-        </Link>
+      <div>
+        <p className="text-xs font-semibold uppercase tracking-wide text-accent">Attendance</p>
+        <h1 className="mt-1 font-display text-2xl font-semibold text-stone-900">Mening davomatim</h1>
       </div>
 
       <div className="rounded-lg border border-stone-200 bg-white p-5">
@@ -101,20 +89,8 @@ export default function MyAttendancePage() {
       {isLoading ? (
         <p className="text-sm text-stone-400">Yuklanmoqda...</p>
       ) : (
-        <MonthlyCalendarView year={year} month={month} records={records} onRequestCorrection={setCorrectionDate} />
+        <MonthlyCalendarView year={year} month={month} records={records} />
       )}
-
-      <Modal isOpen={correctionDate !== null} title={`Tuzatish so'rovi — ${correctionDate ?? ''}`} onClose={() => setCorrectionDate(null)}>
-        {correctionDate && (
-          <CorrectionRequestForm
-            presetDate={correctionDate}
-            onCreated={() => {
-              setCorrectionDate(null);
-              loadCalendar();
-            }}
-          />
-        )}
-      </Modal>
     </div>
   );
 }

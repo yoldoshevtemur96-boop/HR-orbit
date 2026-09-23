@@ -14,7 +14,11 @@ export default function DepartmentTimesheetDetailPage() {
   const params = useParams<{ id: string }>();
   const user = useAuthStore((s) => s.user);
   const canManage = user ? MANAGE_ROLES.includes(user.role) : false;
-  const canDecide = canManage || user?.role === 'DEPARTMENT_HEAD';
+  // DEPARTMENT_HEAD generate+submit qiladi, lekin decide (tasdiqlash) endi
+  // faqat HR/Timekeeper'da — aks holda DEPARTMENT_HEAD o'z-o'ziga
+  // tasdiqlagan bo'lib qolardi.
+  const canSubmit = canManage || user?.role === 'DEPARTMENT_HEAD';
+  const canDecide = canManage;
 
   const [timesheet, setTimesheet] = useState<DepartmentTimesheet | null>(null);
   const [isSubmitting, setIsSubmitting] = useState(false);
@@ -90,14 +94,14 @@ export default function DepartmentTimesheetDetailPage() {
       <DataTable columns={columns} rows={timesheet.summaryData} rowKey={(r) => r.employeeId} emptyText="Xodim topilmadi" />
 
       <div className="flex flex-wrap items-center gap-3">
-        {canManage && timesheet.status === 'DRAFT' && (
+        {canSubmit && timesheet.status === 'DRAFT' && (
           <button
             type="button"
             disabled={isSubmitting}
             onClick={handleSubmit}
             className="rounded-lg bg-accent px-4 py-2.5 text-sm font-semibold text-white transition hover:opacity-90 disabled:opacity-50"
           >
-            Bo&apos;lim boshlig&apos;iga yuborish
+            HR&apos;ga yuborish
           </button>
         )}
 

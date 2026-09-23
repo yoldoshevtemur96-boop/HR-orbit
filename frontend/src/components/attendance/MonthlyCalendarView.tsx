@@ -1,18 +1,13 @@
 'use client';
 
 import { AttendanceDayStatusBadge } from './AttendanceDayStatusBadge';
-import type { AttendanceDayStatus, AttendanceRecord } from '@/types/attendance';
+import type { AttendanceRecord } from '@/types/attendance';
 
 interface MonthlyCalendarViewProps {
   year: number;
   month: number; // 1-12
   records: AttendanceRecord[];
-  onRequestCorrection?: (dateStr: string) => void;
 }
-
-// Faqat shu holatlarda tuzatish so'rovi ma'noga ega — kelmagan/kechikkan
-// kunlar uchun. Ta'til, safar va h.k. HR/tabelchi tomonidan qo'yiladi.
-const CORRECTABLE_STATUSES: AttendanceDayStatus[] = ['LATE', 'ABSENT', 'EARLY_LEAVE'];
 
 function formatTime(iso: string | null): string {
   if (!iso) return '—';
@@ -21,9 +16,11 @@ function formatTime(iso: string | null): string {
 }
 
 // Oddiy ro'yxat ko'rinishi (haqiqiy kalendar to'ri emas) — xodim shaxsiy
-// davomat tarixini kun bo'yicha ko'radi. Oy uzun bo'lgani uchun ichki
-// scroll bilan (sticky header), sahifaning o'zi pastga tushib ketmasin.
-export function MonthlyCalendarView({ year, month, records, onRequestCorrection }: MonthlyCalendarViewProps) {
+// davomat tarixini kun bo'yicha ko'radi (faqat o'qish uchun — tuzatish
+// so'rovini endi faqat departament rahbari yuboradi). Oy uzun bo'lgani
+// uchun ichki scroll bilan (sticky header), sahifaning o'zi pastga
+// tushib ketmasin.
+export function MonthlyCalendarView({ year, month, records }: MonthlyCalendarViewProps) {
   const recordByDate = new Map(records.map((r) => [r.date.slice(0, 10), r]));
   const daysInMonth = new Date(year, month, 0).getDate();
 
@@ -45,39 +42,21 @@ export function MonthlyCalendarView({ year, month, records, onRequestCorrection 
               <th className="px-4 py-2.5 text-left">Holat</th>
               <th className="px-4 py-2.5 text-left">Kechikish</th>
               <th className="px-4 py-2.5 text-left">Overtime</th>
-              <th className="px-4 py-2.5 text-right"></th>
             </tr>
           </thead>
           <tbody>
-            {days.map(({ day, dateStr, record }) => {
-              const status = record?.status ?? 'ABSENT';
-              const canCorrect = onRequestCorrection && CORRECTABLE_STATUSES.includes(status);
-              return (
-                <tr key={dateStr} className="border-b border-stone-100 last:border-0">
-                  <td className="px-4 py-2.5 text-stone-700">{dateStr}</td>
-                  <td className="px-4 py-2.5">{formatTime(record?.checkInTime ?? null)}</td>
-                  <td className="px-4 py-2.5">{formatTime(record?.checkOutTime ?? null)}</td>
-                  <td className="px-4 py-2.5">
-                    <AttendanceDayStatusBadge status={status} />
-                  </td>
-                  <td className="px-4 py-2.5 text-stone-500">{record ? `${record.lateMinutes} daq` : '—'}</td>
-                  <td className="px-4 py-2.5 text-stone-500">{record ? `${record.overtimeMinutes} daq` : '—'}</td>
-                  <td className="px-4 py-2.5 text-right">
-                    {canCorrect && (
-                      <button
-                        type="button"
-                        onClick={() => onRequestCorrection!(dateStr)}
-                        aria-label={`${dateStr} uchun tuzatish so'rovi`}
-                        title="Tuzatish so'rovi yuborish"
-                        className="rounded-md p-1.5 text-stone-400 transition hover:bg-stone-100 hover:text-accent"
-                      >
-                        ✏️
-                      </button>
-                    )}
-                  </td>
-                </tr>
-              );
-            })}
+            {days.map(({ dateStr, record }) => (
+              <tr key={dateStr} className="border-b border-stone-100 last:border-0">
+                <td className="px-4 py-2.5 text-stone-700">{dateStr}</td>
+                <td className="px-4 py-2.5">{formatTime(record?.checkInTime ?? null)}</td>
+                <td className="px-4 py-2.5">{formatTime(record?.checkOutTime ?? null)}</td>
+                <td className="px-4 py-2.5">
+                  <AttendanceDayStatusBadge status={record?.status ?? 'ABSENT'} />
+                </td>
+                <td className="px-4 py-2.5 text-stone-500">{record ? `${record.lateMinutes} daq` : '—'}</td>
+                <td className="px-4 py-2.5 text-stone-500">{record ? `${record.overtimeMinutes} daq` : '—'}</td>
+              </tr>
+            ))}
           </tbody>
         </table>
       </div>

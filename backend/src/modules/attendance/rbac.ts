@@ -15,3 +15,9 @@ export function canViewDepartmentAttendance(role: RoleName): boolean {
 export function canApproveOrgTimesheet(role: RoleName): boolean {
   return role === 'SUPER_ADMIN';
 }
+
+// Davomat tuzatish so'rovini faqat departament rahbari o'z xodimi uchun
+// yuboradi — xodim o'zi uchun to'g'ridan-to'g'ri so'ray olmaydi.
+export function canSubmitCorrection(role: RoleName): boolean {
+  return role === 'DEPARTMENT_HEAD';
+}
