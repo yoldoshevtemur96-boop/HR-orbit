@@ -11,6 +11,7 @@ import { coreHrRouter } from '@/modules/core-hr/core-hr.routes';
 import { workflowRouter } from '@/modules/workflow/workflow.routes';
 import { recruitmentRouter } from '@/modules/recruitment/recruitment.routes';
 import { notificationRouter } from '@/modules/notifications/notification.routes';
+import { attendanceRouter } from '@/modules/attendance/attendance.routes';
 
 export const app = express();
 
@@ -29,6 +30,7 @@ app.use('/api/hr', coreHrRouter);
 app.use('/api/workflow', workflowRouter);
 app.use('/api/recruitment', recruitmentRouter);
 app.use('/api/notifications', notificationRouter);
+app.use('/api/attendance', attendanceRouter);
 
 app.use(notFoundHandler);
 app.use(errorHandler);

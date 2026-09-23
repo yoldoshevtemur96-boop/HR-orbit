@@ -37,6 +37,11 @@ model Organization {
   vacancies         Vacancy[]
   candidates        Candidate[]
   notifications     Notification[]
+  attendanceRecords AttendanceRecord[]
+  attendanceCorrections AttendanceCorrection[]
+  departmentTimesheets DepartmentTimesheet[]
+  organizationTimesheets OrganizationTimesheet[]
+  attendanceSettings AttendanceSettings?
 
   @@map("organizations")
 }
@@ -52,6 +57,7 @@ enum RoleName {
   RECRUITER
   DEPARTMENT_HEAD
   EMPLOYEE
+  TIMEKEEPER // "HR tabelchi" — Attendance modulini to'liq boshqaradi
 }
 
 model User {
@@ -411,6 +417,7 @@ model WorkflowInstance {
   initiator    User             @relation("WorkflowInitiator", fields: [initiatorUserId], references: [id])
   employee     Employee         @relation(fields: [employeeId], references: [id])
   stepActions  WorkflowStepAction[]
+  attendanceCorrection AttendanceCorrection?
 
   @@index([organizationId])
   @@index([status])
@@ -554,4 +561,194 @@ model Candidate {
   @@index([organizationId])
   @@index([vacancyId, stage])
   @@map("candidates")
+}
+
+// ==========================================================================
+// ATTENDANCE
+//
+// Muhim: bu modellar Employee/Department/Branch/User'ga hech qanday
+// teskari relation qo'shmaydi (faqat employeeId: String — relation'siz).
+// Bog'liqlik bir tomonlama: Attendance Core HR'ga tayanadi, Core HR
+// Attendance haqida hech narsa bilmaydi. Xodim/bo'lim ma'lumoti kerak
+// bo'lganda backend/src/modules/core-hr/employee.service.ts'dagi
+// eksport qilingan funksiyalar orqali olinadi.
+// ==========================================================================
+
+// Tashkilot darajasidagi bitta standart ish vaqti konfiguratsiyasi —
+// kechikish/overtime shunga nisbatan hisoblanadi.
+model AttendanceSettings {
+  id                   String   @id @default(cuid())
+  organizationId       String   @unique
+  standardStartTime    String   @default("09:00") // "HH:mm"
+  standardEndTime      String   @default("18:00")
+  standardWorkMinutes  Int      @default(480)
+  lateThresholdMinutes Int      @default(10)
+  updatedAt            DateTime @updatedAt
+
+  organization Organization @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+
+  @@map("attendance_settings")
+}
+
+enum AttendanceSource {
+  MANUAL // HR tabelchi qo'lda kiritgan
+  DEVICE // kelajakda turniket/kamera integratsiyasi
+  IMPORT // kelajakda fayl import
+}
+
+enum AttendanceDayStatus {
+  PRESENT
+  LATE
+  EARLY_LEAVE
+  ABSENT
+  ON_LEAVE
+  BUSINESS_TRIP
+  REMOTE
+  SICK
+}
+
+// Bir xodim, bir kun uchun bitta yozuv. Yozuv yo'qligi = ABSENT deb
+// talqin qilinadi (agregatsiya vaqtida) — oldindan bo'sh yozuv
+// yaratilmaydi (background job infratuzilmasi yo'q).
+model AttendanceRecord {
+  id                String              @id @default(cuid())
+  organizationId    String
+  employeeId        String
+  date              DateTime            @db.Date
+  checkInTime       DateTime?
+  checkOutTime      DateTime?
+  status            AttendanceDayStatus @default(PRESENT)
+  source            AttendanceSource    @default(MANUAL)
+  lateMinutes       Int                 @default(0)
+  earlyLeaveMinutes Int                 @default(0)
+  workedMinutes     Int                 @default(0)
+  overtimeMinutes   Int                 @default(0)
+  note              String?
+  editedByUserId    String?
+  createdAt         DateTime            @default(now())
+  updatedAt         DateTime            @updatedAt
+
+  organization Organization           @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+  corrections  AttendanceCorrection[]
+
+  @@unique([organizationId, employeeId, date])
+  @@index([organizationId, date])
+  @@index([employeeId, date])
+  @@map("attendance_records")
+}
+
+enum CorrectionReasonType {
+  DEVICE_FAILURE // "Turniket ishlamadi"
+  WRONG_CHECK_IN // "Kirish vaqtim noto'g'ri"
+  WRONG_CHECK_OUT // "Chiqish vaqtim noto'g'ri"
+}
+
+enum CorrectionStatus {
+  PENDING_MANAGER // DIRECT_MANAGER bosqichida (Workflow Engine orqali)
+  PENDING_TIMEKEEPER // ROLE:TIMEKEEPER bosqichida
+  APPLIED // tasdiqlandi va AttendanceRecord avtomatik yangilandi
+  REJECTED
+}
+
+// Xodim yuboradigan davomat tuzatish so'rovi. Tasdiqlash zanjiri
+// Workflow Engine orqali (WorkflowInstance) — bu yerdagi status faqat
+// Attendance nuqtai nazaridan qisqacha holatni ko'rsatadi.
+model AttendanceCorrection {
+  id                  String               @id @default(cuid())
+  organizationId      String
+  employeeId          String
+  attendanceRecordId  String?
+  date                DateTime             @db.Date
+  reasonType          CorrectionReasonType
+  requestedCheckIn    DateTime?
+  requestedCheckOut   DateTime?
+  comment             String?
+  status              CorrectionStatus     @default(PENDING_MANAGER)
+  workflowInstanceId  String?              @unique
+  createdAt           DateTime             @default(now())
+  updatedAt           DateTime             @updatedAt
+
+  organization     Organization      @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+  attendanceRecord AttendanceRecord? @relation(fields: [attendanceRecordId], references: [id])
+  workflowInstance WorkflowInstance? @relation(fields: [workflowInstanceId], references: [id])
+
+  @@index([organizationId, employeeId])
+  @@index([status])
+  @@map("attendance_corrections")
+}
+
+enum DepartmentTimesheetStatus {
+  DRAFT // HR tabelchi shakllantirmoqda/tuzatmoqda
+  DEPT_SUBMITTED // departament rahbariga yuborildi
+  DEPT_APPROVED
+  DEPT_REJECTED
+  CONSOLIDATED // umumiy tabelga qo'shildi
+}
+
+// Bitta departament, bitta oy uchun tabel. Workflow Engine ishlatilmaydi —
+// bu obyekt bitta xodimga emas, butun departamentga tegishli.
+model DepartmentTimesheet {
+  id                   String                    @id @default(cuid())
+  organizationId       String
+  departmentId         String
+  month                Int // 1-12
+  year                 Int
+  status               DepartmentTimesheetStatus @default(DRAFT)
+  summaryData          Json // [{employeeId, presentDays, absentDays, lateDays, workedHours, overtimeHours}, ...]
+  submittedAt          DateTime?
+  deptApprovedByUserId String?
+  deptApprovedAt       DateTime?
+  rejectionComment     String?
+  generatedByUserId    String
+  createdAt            DateTime                  @default(now())
+  updatedAt            DateTime                  @updatedAt
+
+  organization      Organization                @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+  orgTimesheetLines OrganizationTimesheetLine[]
+
+  @@unique([organizationId, departmentId, year, month])
+  @@index([organizationId, year, month])
+  @@map("department_timesheets")
+}
+
+enum OrganizationTimesheetStatus {
+  DRAFT
+  SUBMITTED // yuqori rahbarga (SUPER_ADMIN) yuborildi
+  APPROVED // FINAL
+  REJECTED
+}
+
+// Bir nechta DEPT_APPROVED DepartmentTimesheet'larni birlashtiruvchi,
+// tashkilot darajasidagi yakuniy tabel.
+model OrganizationTimesheet {
+  id                   String                      @id @default(cuid())
+  organizationId       String
+  month                Int
+  year                 Int
+  status               OrganizationTimesheetStatus @default(DRAFT)
+  consolidatedByUserId String
+  submittedAt          DateTime?
+  approvedByUserId     String?
+  approvedAt           DateTime?
+  rejectionComment     String?
+  createdAt            DateTime                    @default(now())
+  updatedAt            DateTime                    @updatedAt
+
+  organization Organization                @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+  lines        OrganizationTimesheetLine[]
+
+  @@unique([organizationId, year, month])
+  @@map("organization_timesheets")
+}
+
+model OrganizationTimesheetLine {
+  id                      String @id @default(cuid())
+  organizationTimesheetId String
+  departmentTimesheetId   String
+
+  organizationTimesheet OrganizationTimesheet @relation(fields: [organizationTimesheetId], references: [id], onDelete: Cascade)
+  departmentTimesheet   DepartmentTimesheet   @relation(fields: [departmentTimesheetId], references: [id])
+
+  @@unique([organizationTimesheetId, departmentTimesheetId])
+  @@map("organization_timesheet_lines")
 }

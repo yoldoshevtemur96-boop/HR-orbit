@@ -91,6 +91,18 @@ async function main() {
     },
   });
 
+  const timekeeperPosition = await prisma.position.create({
+    data: {
+      organizationId: org.id,
+      departmentId: department.id,
+      branchId: branch.id,
+      name: 'Tabelchi',
+      code: 'TIMEKEEPER-1',
+      grade: 'Mutaxassis',
+      approvedHeadcount: 1,
+    },
+  });
+
   // --- Foydalanuvchilar va xodimlar ---------------------------------------
 
   const ceoUser = await prisma.user.create({
@@ -232,6 +244,32 @@ async function main() {
     include: { employee: true },
   });
 
+  const timekeeperUser = await prisma.user.create({
+    data: {
+      organizationId: org.id,
+      email: 'tabelchi@demo.uz',
+      passwordHash,
+      role: 'TIMEKEEPER',
+      employee: {
+        create: {
+          organizationId: org.id,
+          employeeCode: 'EMP-00006',
+          firstName: 'Nilufar',
+          lastName: 'Tabelova',
+          fullName: 'Nilufar Tabelova',
+          workEmail: 'tabelchi@demo.uz',
+          positionId: timekeeperPosition.id,
+          departmentId: department.id,
+          branchId: branch.id,
+          managerId: hrUser.employee!.id,
+          status: 'ACTIVE',
+          employmentType: 'FULL_TIME',
+        },
+      },
+    },
+    include: { employee: true },
+  });
+
   // --- Har bir xodim uchun boshlang'ich EmploymentRecord (tarix) ----------
 
   const allEmployees = [
@@ -240,6 +278,7 @@ async function main() {
     { user: legalUser, positionId: legalPosition.id, managerId: ceoUser.employee!.id },
     { user: deptHeadUser, positionId: itHeadPosition.id, managerId: ceoUser.employee!.id },
     { user: employeeUser, positionId: devPosition.id, managerId: deptHeadUser.employee!.id },
+    { user: timekeeperUser, positionId: timekeeperPosition.id, managerId: hrUser.employee!.id },
   ];
 
   for (const { user, positionId, managerId } of allEmployees) {
@@ -436,6 +475,39 @@ async function main() {
     },
   });
 
+  // --- Attendance: davomat tuzatish so'rovi shabloni -----------------------
+  // finalizeCorrection() shu shablon nomi bo'yicha qidiradi
+  // (backend/src/modules/attendance/correction.service.ts).
+
+  const attendanceCorrectionTemplate = await prisma.workflowTemplate.create({
+    data: {
+      organizationId: org.id,
+      name: 'Davomat tuzatish so\'rovi',
+      description: 'Xodim noto\'g\'ri qayd etilgan kirish/chiqish vaqtini tuzatishni so\'raydi.',
+      formSchema: [
+        { key: 'date', label: 'Sana', type: 'date', required: true },
+        {
+          key: 'reasonType',
+          label: 'Sabab',
+          type: 'select',
+          required: true,
+          options: ['DEVICE_FAILURE', 'WRONG_CHECK_IN', 'WRONG_CHECK_OUT'],
+        },
+        { key: 'requestedCheckIn', label: "To'g'ri kirish vaqti", type: 'text', required: false },
+        { key: 'requestedCheckOut', label: "To'g'ri chiqish vaqti", type: 'text', required: false },
+        { key: 'comment', label: 'Izoh', type: 'textarea', required: false },
+      ],
+      documentBody:
+        '{{employeeName}} {{date}} kuni uchun davomat tuzatishini so\'raydi ({{reasonType}}).\nIzoh: {{comment}}',
+      steps: {
+        create: [
+          { order: 1, name: 'Bevosita rahbar tasdig\'i', approverType: 'DIRECT_MANAGER', actionType: 'APPROVE' },
+          { order: 2, name: 'Tabelchi tasdig\'i', approverType: 'ROLE', approverRole: 'TIMEKEEPER', actionType: 'APPROVE' },
+        ],
+      },
+    },
+  });
+
   console.log('Seed tugadi ✅');
   console.log('---------------------------------------------');
   console.log('Tashkilot slug:', org.slug);
@@ -445,6 +517,7 @@ async function main() {
   console.log('  Bo\'lim boshlig\'i:', deptHeadUser.email);
   console.log('  Yurist:', legalUser.email);
   console.log('  Oddiy xodim:', employeeUser.email);
+  console.log('  HR tabelchi (TIMEKEEPER):', timekeeperUser.email);
   console.log('Workflow shablonlari yaratildi:');
   [
     template,
@@ -455,6 +528,7 @@ async function main() {
     changePersonalInfoTemplate,
     changeBankDetailsTemplate,
     otherHrRequestTemplate,
+    attendanceCorrectionTemplate,
   ].forEach((t) => console.log('  -', t.name, '(id:', t.id + ')'));
   console.log('---------------------------------------------');
 }

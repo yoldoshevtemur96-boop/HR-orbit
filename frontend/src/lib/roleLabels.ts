@@ -7,6 +7,7 @@ export const ROLE_LABEL: Record<RoleName, string> = {
   RECRUITER: 'Rekruter',
   DEPARTMENT_HEAD: "Bo'lim boshlig'i",
   EMPLOYEE: 'Xodim',
+  TIMEKEEPER: 'Tabelchi',
 };
 
 export function roleLabel(role: string): string {

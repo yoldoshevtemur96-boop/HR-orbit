@@ -230,6 +230,47 @@ async function applyResourceScope(where: Prisma.EmployeeWhereInput, auth: AuthCo
 }
 
 // --------------------------------------------------------------------------
+// Boshqa modullar uchun yagona kirish nuqtasi (masalan Attendance) — faqat
+// minimal maydonlar, resurs-scope bilan. Chaqiruvchi modul hech qachon
+// prisma.employee.* ni o'zi yozmasligi kerak.
+// --------------------------------------------------------------------------
+
+interface ListActiveEmployeesForScopeInput {
+  departmentId?: string;
+  branchId?: string;
+}
+
+export async function listActiveEmployeesForScope(auth: AuthContext, filters: ListActiveEmployeesForScopeInput = {}) {
+  const where: Prisma.EmployeeWhereInput = {
+    organizationId: auth.organizationId,
+    status: 'ACTIVE',
+    departmentId: filters.departmentId,
+    branchId: filters.branchId,
+  };
+
+  // TIMEKEEPER Core HR'da alohida ruxsatga ega emas, lekin Attendance'ni
+  // to'liq boshqarish huquqiga ega — shu bitta kirish nuqtasida
+  // cheklovsiz deb hisoblanadi (applyResourceScope'ning umumiy Core HR
+  // qoidasi o'zgartirilmaydi, boshqa rollarga ta'sir qilmasligi uchun).
+  if (auth.role !== 'TIMEKEEPER') {
+    await applyResourceScope(where, auth);
+  }
+
+  return prisma.employee.findMany({
+    where,
+    select: {
+      id: true,
+      fullName: true,
+      employeeCode: true,
+      departmentId: true,
+      branchId: true,
+      managerId: true,
+    },
+    orderBy: { fullName: 'asc' },
+  });
+}
+
+// --------------------------------------------------------------------------
 // Get by id
 // --------------------------------------------------------------------------
 
