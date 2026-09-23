@@ -11,6 +11,13 @@ async function main() {
 
   const passwordHash = await bcrypt.hash('Password123!', 10);
 
+  // Barcha demo xodimlar "ancha oldin" ishga kirgan deb belgilanadi —
+  // aks holda hiredAt @default(now()) bo'lib, joriy oy uchun generatsiya
+  // qilinadigan davomat yozuvlari "ishga kirgunidan oldingi kun" sifatida
+  // chetlab o'tiladi (attendanceRecordsData bo'sh chiqib qoladi).
+  const defaultHiredAt = new Date();
+  defaultHiredAt.setUTCMonth(defaultHiredAt.getUTCMonth() - 6);
+
   const org = await prisma.organization.create({
     data: { name: 'Demo Kompaniya', slug: 'demo', plan: 'trial' },
   });
@@ -124,6 +131,7 @@ async function main() {
           branchId: branch.id,
           status: 'ACTIVE',
           employmentType: 'FULL_TIME',
+          hiredAt: defaultHiredAt,
         },
       },
     },
@@ -150,6 +158,7 @@ async function main() {
           managerId: ceoUser.employee!.id,
           status: 'ACTIVE',
           employmentType: 'FULL_TIME',
+          hiredAt: defaultHiredAt,
         },
       },
     },
@@ -176,6 +185,7 @@ async function main() {
           managerId: ceoUser.employee!.id,
           status: 'ACTIVE',
           employmentType: 'FULL_TIME',
+          hiredAt: defaultHiredAt,
         },
       },
     },
@@ -202,6 +212,7 @@ async function main() {
           managerId: ceoUser.employee!.id,
           status: 'ACTIVE',
           employmentType: 'FULL_TIME',
+          hiredAt: defaultHiredAt,
         },
       },
     },
@@ -238,6 +249,7 @@ async function main() {
           managerId: deptHeadUser.employee!.id, // bevosita rahbari — DIRECT_MANAGER shu orqali topiladi
           status: 'ACTIVE',
           employmentType: 'FULL_TIME',
+          hiredAt: defaultHiredAt,
         },
       },
     },
@@ -264,6 +276,7 @@ async function main() {
           managerId: hrUser.employee!.id,
           status: 'ACTIVE',
           employmentType: 'FULL_TIME',
+          hiredAt: defaultHiredAt,
         },
       },
     },
@@ -296,6 +309,356 @@ async function main() {
       },
     });
   }
+
+  // --- Qo'shimcha bo'limlar: Moliya, Marketing, Sotuv, Yuridik -------------
+  // Har biri o'z boshlig'i (DEPARTMENT_HEAD, login qiladi) va bir nechta
+  // oddiy xodimdan iborat (faqat Employee — User/login'siz, Core HR va
+  // Attendance uchun to'liq ma'lumot bazani boyitish uchun yetarli).
+
+  let employeeCounter = 7; // EMP-00007 dan davom etadi
+
+  function nextEmployeeCode(): string {
+    return `EMP-${String(employeeCounter++).padStart(5, '0')}`;
+  }
+
+  interface DepartmentBlueprint {
+    name: string;
+    code: string;
+    headFirstName: string;
+    headLastName: string;
+    headEmail: string;
+    headPositionName: string;
+    headPositionCode: string;
+    staffPositionName: string;
+    staffPositionCode: string;
+    staff: [string, string][]; // [firstName, lastName][]
+  }
+
+  const departmentBlueprints: DepartmentBlueprint[] = [
+    {
+      name: "Moliya bo'limi",
+      code: 'FIN',
+      headFirstName: 'Dilnoza',
+      headLastName: 'Qosimova',
+      headEmail: 'moliya.boshliq@demo.uz',
+      headPositionName: "Moliya bo'limi boshlig'i",
+      headPositionCode: 'FIN-HEAD',
+      staffPositionName: 'Moliyachi',
+      staffPositionCode: 'FIN-STAFF',
+      staff: [
+        ['Shahzod', 'Umarov'],
+        ['Gulnora', 'Tosheva'],
+        ['Farrux', 'Yusupov'],
+        ['Madina', 'Sodiqova'],
+      ],
+    },
+    {
+      name: 'Marketing bo\'limi',
+      code: 'MKT',
+      headFirstName: 'Javlon',
+      headLastName: 'Ergashev',
+      headEmail: 'marketing.boshliq@demo.uz',
+      headPositionName: "Marketing bo'limi boshlig'i",
+      headPositionCode: 'MKT-HEAD',
+      staffPositionName: 'Marketing mutaxassisi',
+      staffPositionCode: 'MKT-STAFF',
+      staff: [
+        ['Zarina', 'Nazarova'],
+        ['Sardor', 'Aliqulov'],
+        ['Kamola', 'Rustamova'],
+        ['Otabek', 'Xolmatov'],
+        ['Nigora', 'Saidova'],
+      ],
+    },
+    {
+      name: "Sotuv bo'limi",
+      code: 'SLS',
+      headFirstName: 'Bahodir',
+      headLastName: 'Nematov',
+      headEmail: 'sotuv.boshliq@demo.uz',
+      headPositionName: "Sotuv bo'limi boshlig'i",
+      headPositionCode: 'SLS-HEAD',
+      staffPositionName: 'Sotuv menejeri',
+      staffPositionCode: 'SLS-STAFF',
+      staff: [
+        ['Aziza', 'Qodirova'],
+        ['Jasur', 'Mirzayev'],
+        ['Dilshod', 'Ravshanov'],
+        ['Sevinch', 'Bekova'],
+        ['Ulug\'bek', 'Tursunov'],
+        ['Shoira', 'Ahmedova'],
+      ],
+    },
+    {
+      name: 'Yuridik bo\'lim',
+      code: 'LGL',
+      headFirstName: 'Nodira',
+      headLastName: 'Yoqubova',
+      headEmail: 'yuridik.boshliq@demo.uz',
+      headPositionName: "Yuridik bo'lim boshlig'i",
+      headPositionCode: 'LGL-HEAD',
+      staffPositionName: 'Yurist',
+      staffPositionCode: 'LGL-STAFF',
+      staff: [
+        ['Rustam', 'Davronov'],
+        ['Feruza', 'Ismoilova'],
+        ['Akmal', 'Sultonov'],
+      ],
+    },
+  ];
+
+  // Attendance generatsiyasi uchun barcha faol xodimlarni (userId bilan
+  // yoki yo'q) shu massivga to'playmiz.
+  const allActiveEmployees: { id: string; hiredAt: Date }[] = allEmployees.map((e) => ({
+    id: e.user.employee!.id,
+    hiredAt: e.user.employee!.hiredAt,
+  }));
+
+  for (const bp of departmentBlueprints) {
+    const dept = await prisma.department.create({
+      data: { organizationId: org.id, name: bp.name, code: bp.code },
+    });
+
+    const headPosition = await prisma.position.create({
+      data: {
+        organizationId: org.id,
+        departmentId: dept.id,
+        branchId: branch.id,
+        name: bp.headPositionName,
+        code: bp.headPositionCode,
+        grade: 'Boshliq',
+        approvedHeadcount: 1,
+      },
+    });
+
+    const staffPosition = await prisma.position.create({
+      data: {
+        organizationId: org.id,
+        departmentId: dept.id,
+        branchId: branch.id,
+        name: bp.staffPositionName,
+        code: bp.staffPositionCode,
+        grade: 'Mutaxassis',
+        approvedHeadcount: bp.staff.length,
+      },
+    });
+
+    const headUser = await prisma.user.create({
+      data: {
+        organizationId: org.id,
+        email: bp.headEmail,
+        passwordHash,
+        role: 'DEPARTMENT_HEAD',
+        employee: {
+          create: {
+            organizationId: org.id,
+            employeeCode: nextEmployeeCode(),
+            firstName: bp.headFirstName,
+            lastName: bp.headLastName,
+            fullName: `${bp.headFirstName} ${bp.headLastName}`,
+            workEmail: bp.headEmail,
+            positionId: headPosition.id,
+            departmentId: dept.id,
+            branchId: branch.id,
+            managerId: ceoUser.employee!.id,
+            status: 'ACTIVE',
+            employmentType: 'FULL_TIME',
+          hiredAt: defaultHiredAt,
+          },
+        },
+      },
+      include: { employee: true },
+    });
+
+    await prisma.department.update({
+      where: { id: dept.id },
+      data: { headEmployeeId: headUser.employee!.id },
+    });
+
+    await prisma.employmentRecord.create({
+      data: {
+        organizationId: org.id,
+        employeeId: headUser.employee!.id,
+        positionId: headPosition.id,
+        departmentId: dept.id,
+        branchId: branch.id,
+        managerId: ceoUser.employee!.id,
+        startDate: headUser.employee!.hiredAt,
+        endDate: null,
+        reason: "Boshlang'ich ma'lumot",
+      },
+    });
+
+    allActiveEmployees.push({ id: headUser.employee!.id, hiredAt: headUser.employee!.hiredAt });
+
+    for (const [firstName, lastName] of bp.staff) {
+      const staffEmployee = await prisma.employee.create({
+        data: {
+          organizationId: org.id,
+          employeeCode: nextEmployeeCode(),
+          firstName,
+          lastName,
+          fullName: `${firstName} ${lastName}`,
+          positionId: staffPosition.id,
+          departmentId: dept.id,
+          branchId: branch.id,
+          managerId: headUser.employee!.id,
+          status: 'ACTIVE',
+          employmentType: 'FULL_TIME',
+          hiredAt: defaultHiredAt,
+        },
+      });
+
+      await prisma.employmentRecord.create({
+        data: {
+          organizationId: org.id,
+          employeeId: staffEmployee.id,
+          positionId: staffPosition.id,
+          departmentId: dept.id,
+          branchId: branch.id,
+          managerId: headUser.employee!.id,
+          startDate: staffEmployee.hiredAt,
+          endDate: null,
+          reason: "Boshlang'ich ma'lumot",
+        },
+      });
+
+      allActiveEmployees.push({ id: staffEmployee.id, hiredAt: staffEmployee.hiredAt });
+    }
+  }
+
+  // --- Attendance: joriy oy uchun kunlik davomat yozuvlari -----------------
+  // Har bir ish kuni (dam olish kunlaridan tashqari) uchun har bir xodimga
+  // real ko'rinishdagi yozuv: asosan PRESENT, ozgina LATE/ABSENT/SICK
+  // aralashtirilgan holda (xodim id'siga qarab deterministik, seed har
+  // safar bir xil natija bersin uchun tasodifiy emas).
+
+  await prisma.attendanceSettings.create({
+    data: { organizationId: org.id },
+  });
+
+  const attendanceToday = new Date();
+  const attendanceMonthStart = new Date(Date.UTC(attendanceToday.getUTCFullYear(), attendanceToday.getUTCMonth(), 1));
+  const attendanceDays: Date[] = [];
+  for (
+    let d = new Date(attendanceMonthStart);
+    d <= attendanceToday;
+    d.setUTCDate(d.getUTCDate() + 1)
+  ) {
+    const dayOfWeek = d.getUTCDay();
+    if (dayOfWeek !== 0 && dayOfWeek !== 6) {
+      attendanceDays.push(new Date(d));
+    }
+  }
+
+  function hashCode(input: string): number {
+    let hash = 0;
+    for (let i = 0; i < input.length; i++) {
+      hash = (hash * 31 + input.charCodeAt(i)) >>> 0;
+    }
+    return hash;
+  }
+
+  const attendanceRecordsData: {
+    organizationId: string;
+    employeeId: string;
+    date: Date;
+    checkInTime: Date | null;
+    checkOutTime: Date | null;
+    status: 'PRESENT' | 'LATE' | 'EARLY_LEAVE' | 'ABSENT' | 'ON_LEAVE' | 'SICK';
+    source: 'DEVICE';
+    lateMinutes: number;
+    earlyLeaveMinutes: number;
+    workedMinutes: number;
+    overtimeMinutes: number;
+  }[] = [];
+
+  for (const employee of allActiveEmployees) {
+    const hiredDateOnly = new Date(
+      Date.UTC(employee.hiredAt.getUTCFullYear(), employee.hiredAt.getUTCMonth(), employee.hiredAt.getUTCDate()),
+    );
+    for (const day of attendanceDays) {
+      if (day < hiredDateOnly) continue; // ishga kirgunidan oldingi kunlar yo'q (faqat sana solishtiriladi, soat emas)
+
+      const seed = hashCode(`${employee.id}-${day.toISOString().slice(0, 10)}`);
+      const roll = seed % 100;
+
+      if (roll < 3) {
+        // ~3% kasal
+        attendanceRecordsData.push({
+          organizationId: org.id,
+          employeeId: employee.id,
+          date: day,
+          checkInTime: null,
+          checkOutTime: null,
+          status: 'SICK',
+          source: 'DEVICE',
+          lateMinutes: 0,
+          earlyLeaveMinutes: 0,
+          workedMinutes: 0,
+          overtimeMinutes: 0,
+        });
+        continue;
+      }
+      if (roll < 6) {
+        // ~3% sababsiz kelmagan
+        attendanceRecordsData.push({
+          organizationId: org.id,
+          employeeId: employee.id,
+          date: day,
+          checkInTime: null,
+          checkOutTime: null,
+          status: 'ABSENT',
+          source: 'DEVICE',
+          lateMinutes: 0,
+          earlyLeaveMinutes: 0,
+          workedMinutes: 0,
+          overtimeMinutes: 0,
+        });
+        continue;
+      }
+
+      // Qolganlar — keldi, ozgina kechikish/erta ketish tabiiy tarqalgan
+      const lateMinutes = roll < 20 ? 5 + (roll % 25) : 0; // ~14% kechikadi (5-29 daq)
+      const checkInHour = 9;
+      const checkInMinute = Math.min(lateMinutes, 59);
+      const checkInTime = new Date(
+        Date.UTC(day.getUTCFullYear(), day.getUTCMonth(), day.getUTCDate(), checkInHour, checkInMinute),
+      );
+
+      const earlyLeaveMinutes = roll >= 90 ? 10 + (roll % 20) : 0; // ~10% erta ketadi
+      const checkOutHour = 18;
+      const checkOutTime = new Date(
+        Date.UTC(day.getUTCFullYear(), day.getUTCMonth(), day.getUTCDate(), checkOutHour, 0),
+      );
+      checkOutTime.setUTCMinutes(checkOutTime.getUTCMinutes() - earlyLeaveMinutes);
+
+      const workedMinutes = Math.max(0, Math.round((checkOutTime.getTime() - checkInTime.getTime()) / 60000));
+      const standardWorkMinutes = 480;
+      const overtimeMinutes = Math.max(0, workedMinutes - standardWorkMinutes);
+
+      let status: 'PRESENT' | 'LATE' | 'EARLY_LEAVE' = 'PRESENT';
+      if (lateMinutes > 10) status = 'LATE';
+      else if (earlyLeaveMinutes > 0) status = 'EARLY_LEAVE';
+
+      attendanceRecordsData.push({
+        organizationId: org.id,
+        employeeId: employee.id,
+        date: day,
+        checkInTime,
+        checkOutTime,
+        status,
+        source: 'DEVICE',
+        lateMinutes: lateMinutes > 10 ? lateMinutes : 0,
+        earlyLeaveMinutes,
+        workedMinutes,
+        overtimeMinutes,
+      });
+    }
+  }
+
+  // createMany katta hajmda tezroq — chunki bir nechta yuzlab yozuv bo'ladi.
+  await prisma.attendanceRecord.createMany({ data: attendanceRecordsData });
 
   // --- Workflow shabloni: Mehnat ta'tiliga chiqish arizasi ----------------
 
@@ -485,6 +848,13 @@ async function main() {
   console.log('  Yurist:', legalUser.email);
   console.log('  Oddiy xodim:', employeeUser.email);
   console.log('  HR tabelchi (TIMEKEEPER):', timekeeperUser.email);
+  console.log('Qo\'shimcha bo\'lim boshliqlari (DEPARTMENT_HEAD):');
+  for (const bp of departmentBlueprints) {
+    console.log(`  ${bp.name}:`, bp.headEmail);
+  }
+  console.log('Jami xodimlar:', allActiveEmployees.length);
+  console.log('Jami bo\'limlar:', departmentBlueprints.length + 1);
+  console.log('Davomat yozuvlari:', attendanceRecordsData.length, `(${attendanceDays.length} ish kuni x xodimlar)`);
   console.log('Workflow shablonlari yaratildi:');
   [
     template,
