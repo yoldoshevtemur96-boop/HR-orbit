@@ -134,43 +134,20 @@ attendanceRouter.get('/records/employee/:employeeId', async (req, res) => {
 });
 
 // ---------------------------------------------------------------------------
-// Corrections
+// Corrections — departament rahbari qoldiradigan erkin matnli izoh
+// (tasdiqlash zanjiri yo'q, faqat bo'lim tabelida belgilanadi).
 // ---------------------------------------------------------------------------
 
 const submitCorrectionSchema = z.object({
   employeeId: z.string().min(1),
   date: z.coerce.date(),
-  reasonType: z.enum(['DEVICE_FAILURE', 'WRONG_CHECK_IN', 'WRONG_CHECK_OUT']),
-  requestedCheckIn: z.coerce.date().optional(),
-  requestedCheckOut: z.coerce.date().optional(),
-  comment: z.string().optional(),
+  comment: z.string().min(1),
 });
 
 attendanceRouter.post('/corrections', requireRole('DEPARTMENT_HEAD'), async (req, res) => {
   const input = submitCorrectionSchema.parse(req.body);
   const correction = await correctionService.submitCorrection({ auth: req.auth!, ...input });
   res.status(201).json(correction);
-});
-
-attendanceRouter.get('/corrections/mine', async (req, res) => {
-  const corrections = await correctionService.listMyCorrections(req.auth!);
-  res.json(corrections);
-});
-
-attendanceRouter.get('/corrections/pending', async (req, res) => {
-  const corrections = await correctionService.listPendingCorrections(req.auth!);
-  res.json(corrections);
-});
-
-const finalizeCorrectionSchema = z.object({
-  decision: z.enum(['APPROVED', 'REJECTED']),
-  comment: z.string().optional(),
-});
-
-attendanceRouter.post('/corrections/:id/finalize', async (req, res) => {
-  const { decision, comment } = finalizeCorrectionSchema.parse(req.body);
-  const correction = await correctionService.finalizeCorrection(req.auth!, req.params.id, decision, comment);
-  res.json(correction);
 });
 
 // ---------------------------------------------------------------------------

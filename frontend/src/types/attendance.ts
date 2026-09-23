@@ -75,6 +75,8 @@ export interface TimesheetDayCell {
   day: number;
   code: string; // "8" (ishlagan soat), "Д"/"К"/"С"/"М" (holat kodi), "В" (dam olish kuni), yoki "" (bo'sh)
   hours: number | null;
+  hasCorrection: boolean;
+  correctionComment: string | null;
 }
 
 export interface EmployeeAttendanceSummaryLine {

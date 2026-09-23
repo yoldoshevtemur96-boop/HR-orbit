@@ -1,5 +1,6 @@
 'use client';
 
+import { useState } from 'react';
 import type { EmployeeAttendanceSummaryLine, TimesheetDayCell } from '@/types/attendance';
 
 interface TimesheetGridTableProps {
@@ -24,11 +25,18 @@ function cellClassName(cell: TimesheetDayCell): string {
 
 const STICKY_COL_CLASS = 'sticky bg-white';
 
+interface OpenPopover {
+  employeeId: string;
+  day: number;
+  comment: string;
+}
+
 export function TimesheetGridTable({ rows, daysInMonth, isApproved }: TimesheetGridTableProps) {
   const days = Array.from({ length: daysInMonth }, (_, i) => i + 1);
+  const [openPopover, setOpenPopover] = useState<OpenPopover | null>(null);
 
   return (
-    <div className="overflow-x-auto rounded-lg border border-stone-200 bg-white">
+    <div className="relative overflow-x-auto rounded-lg border border-stone-200 bg-white">
       <table className="w-full min-w-max border-collapse text-xs">
         <thead>
           <tr className="border-b border-stone-200 bg-stone-50 text-[11px] font-semibold uppercase tracking-wide text-stone-500">
@@ -81,9 +89,34 @@ export function TimesheetGridTable({ rows, daysInMonth, isApproved }: TimesheetG
                 {row.days.map((cell) => (
                   <td
                     key={cell.day}
-                    className={`border-r border-stone-100 px-1 py-1.5 text-center font-medium ${cellClassName(cell)}`}
+                    className={`relative border-r border-stone-100 px-1 py-1.5 text-center font-medium ${cellClassName(cell)} ${
+                      cell.hasCorrection ? 'ring-2 ring-inset ring-sky-500' : ''
+                    } ${cell.hasCorrection ? 'cursor-pointer' : ''}`}
+                    onClick={() => {
+                      if (!cell.hasCorrection) return;
+                      setOpenPopover({ employeeId: row.employeeId, day: cell.day, comment: cell.correctionComment ?? '' });
+                    }}
                   >
                     {cell.code}
+                    {openPopover?.employeeId === row.employeeId && openPopover.day === cell.day && (
+                      <div
+                        className="absolute left-1/2 top-full z-30 mt-1 w-56 -translate-x-1/2 rounded-lg border border-stone-200 bg-white p-3 text-left text-xs font-normal normal-case text-stone-700 shadow-lg"
+                        onClick={(e) => e.stopPropagation()}
+                      >
+                        <div className="mb-1.5 flex items-center justify-between">
+                          <span className="font-semibold text-stone-800">Izoh</span>
+                          <button
+                            type="button"
+                            onClick={() => setOpenPopover(null)}
+                            aria-label="Yopish"
+                            className="text-stone-400 hover:text-stone-700"
+                          >
+                            ✕
+                          </button>
+                        </div>
+                        <p>{openPopover.comment || 'Izoh yo‘q'}</p>
+                      </div>
+                    )}
                   </td>
                 ))}
                 <td className="border-l-2 border-stone-300 px-2 py-1.5 text-center font-semibold text-stone-800">

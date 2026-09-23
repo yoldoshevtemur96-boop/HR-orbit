@@ -475,69 +475,6 @@ async function main() {
     },
   });
 
-  // --- Attendance: davomat tuzatish so'rovi shabloni -----------------------
-  // finalizeCorrection() shu shablon nomi bo'yicha qidiradi
-  // (backend/src/modules/attendance/correction.service.ts).
-
-  const attendanceCorrectionTemplate = await prisma.workflowTemplate.create({
-    data: {
-      organizationId: org.id,
-      name: 'Davomat tuzatish so\'rovi',
-      description: 'Xodim noto\'g\'ri qayd etilgan kirish/chiqish vaqtini tuzatishni so\'raydi.',
-      formSchema: [
-        { key: 'date', label: 'Sana', type: 'date', required: true },
-        {
-          key: 'reasonType',
-          label: 'Sabab',
-          type: 'select',
-          required: true,
-          options: ['DEVICE_FAILURE', 'WRONG_CHECK_IN', 'WRONG_CHECK_OUT'],
-        },
-        { key: 'requestedCheckIn', label: "To'g'ri kirish vaqti", type: 'text', required: false },
-        { key: 'requestedCheckOut', label: "To'g'ri chiqish vaqti", type: 'text', required: false },
-        { key: 'comment', label: 'Izoh', type: 'textarea', required: false },
-      ],
-      documentBody:
-        '{{employeeName}} {{date}} kuni uchun davomat tuzatishini so\'raydi ({{reasonType}}).\nIzoh: {{comment}}',
-      steps: {
-        create: [
-          { order: 1, name: 'Bevosita rahbar tasdig\'i', approverType: 'DIRECT_MANAGER', actionType: 'APPROVE' },
-          { order: 2, name: 'Tabelchi tasdig\'i', approverType: 'ROLE', approverRole: 'TIMEKEEPER', actionType: 'APPROVE' },
-        ],
-      },
-    },
-  });
-
-  // Departament rahbari o'zi tuzatish so'rovini yuborganda ishlatiladigan
-  // shablon — u o'zi allaqachon "bevosita rahbar" bo'lgani uchun bitta
-  // bosqichli (faqat ROLE:TIMEKEEPER). correction.service.ts shu shablon
-  // nomi bo'yicha qidiradi.
-  const attendanceCorrectionByManagerTemplate = await prisma.workflowTemplate.create({
-    data: {
-      organizationId: org.id,
-      name: 'Davomat tuzatish so\'rovi (rahbar tomonidan)',
-      description: 'Departament rahbari o\'z xodimi uchun noto\'g\'ri qayd etilgan kirish/chiqish vaqtini tuzatishni so\'raydi.',
-      formSchema: [
-        { key: 'date', label: 'Sana', type: 'date', required: true },
-        {
-          key: 'reasonType',
-          label: 'Sabab',
-          type: 'select',
-          required: true,
-          options: ['DEVICE_FAILURE', 'WRONG_CHECK_IN', 'WRONG_CHECK_OUT'],
-        },
-        { key: 'requestedCheckIn', label: "To'g'ri kirish vaqti", type: 'text', required: false },
-        { key: 'requestedCheckOut', label: "To'g'ri chiqish vaqti", type: 'text', required: false },
-        { key: 'comment', label: 'Izoh', type: 'textarea', required: false },
-      ],
-      documentBody:
-        '{{employeeName}} {{date}} kuni uchun davomat tuzatishini so\'raydi ({{reasonType}}).\nIzoh: {{comment}}',
-      steps: {
-        create: [{ order: 1, name: 'Tabelchi tasdig\'i', approverType: 'ROLE', approverRole: 'TIMEKEEPER', actionType: 'APPROVE' }],
-      },
-    },
-  });
-
   console.log('Seed tugadi ✅');
   console.log('---------------------------------------------');
   console.log('Tashkilot slug:', org.slug);
@@ -558,8 +495,6 @@ async function main() {
     changePersonalInfoTemplate,
     changeBankDetailsTemplate,
     otherHrRequestTemplate,
-    attendanceCorrectionTemplate,
-    attendanceCorrectionByManagerTemplate,
   ].forEach((t) => console.log('  -', t.name, '(id:', t.id + ')'));
   console.log('---------------------------------------------');
 }

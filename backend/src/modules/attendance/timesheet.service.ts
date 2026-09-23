@@ -2,6 +2,7 @@ import type { RoleName } from '@prisma/client';
 import { prisma } from '@/config/prisma';
 import { AppError } from '@/common/errors/AppError';
 import { getMyEmployee } from '@/modules/core-hr/employee.service';
+import { listCorrectionsForDepartmentMonth } from './correction.service';
 import { canApproveOrgTimesheet, canManageAttendance } from './rbac';
 
 interface AuthContext {
@@ -25,6 +26,8 @@ interface DayCell {
   day: number;
   code: string; // "8" (ishlagan soat), "Д"/"К"/"С"/"М" (holat kodi), "В" (dam olish kuni), yoki "" (bo'sh)
   hours: number | null; // faqat ishlagan kun uchun (workedMinutes/60, yaxlitlangan)
+  hasCorrection: boolean; // departament rahbari shu kun uchun izoh qoldirganmi
+  correctionComment: string | null;
 }
 
 interface EmployeeSummaryLine {
@@ -48,13 +51,20 @@ interface EmployeeSummaryLine {
 // 1С-uslubidagi tabel katakchasi uchun status -> kod xaritasi. Yozuv yo'q
 // va kun hafta oxiri (shanba/yakshanba) bo'lsa "В" — bayram kalendari
 // qurilmagani uchun faqat hafta kuni asosida aniqlanadi.
-function mapRecordToDayCell(day: number, date: Date, record: { status: string; workedMinutes: number } | undefined): DayCell {
+function mapRecordToDayCell(
+  day: number,
+  date: Date,
+  record: { status: string; workedMinutes: number } | undefined,
+  correctionComment: string | null,
+): DayCell {
+  const correctionFields = { hasCorrection: correctionComment !== null, correctionComment };
+
   if (!record) {
     const dayOfWeek = date.getUTCDay(); // 0=yakshanba, 6=shanba
     if (dayOfWeek === 0 || dayOfWeek === 6) {
-      return { day, code: 'В', hours: null };
+      return { day, code: 'В', hours: null, ...correctionFields };
     }
-    return { day, code: '', hours: null };
+    return { day, code: '', hours: null, ...correctionFields };
   }
 
   switch (record.status) {
@@ -62,19 +72,19 @@ function mapRecordToDayCell(day: number, date: Date, record: { status: string; w
     case 'LATE':
     case 'EARLY_LEAVE': {
       const hours = Math.round((record.workedMinutes / 60) * 10) / 10;
-      return { day, code: hours > 0 ? String(hours) : '8', hours };
+      return { day, code: hours > 0 ? String(hours) : '8', hours, ...correctionFields };
     }
     case 'ON_LEAVE':
-      return { day, code: 'Д', hours: null };
+      return { day, code: 'Д', hours: null, ...correctionFields };
     case 'SICK':
-      return { day, code: 'К', hours: null };
+      return { day, code: 'К', hours: null, ...correctionFields };
     case 'BUSINESS_TRIP':
-      return { day, code: 'С', hours: null };
+      return { day, code: 'С', hours: null, ...correctionFields };
     case 'REMOTE':
-      return { day, code: 'М', hours: null };
+      return { day, code: 'М', hours: null, ...correctionFields };
     case 'ABSENT':
     default:
-      return { day, code: '', hours: null };
+      return { day, code: '', hours: null, ...correctionFields };
   }
 }
 
@@ -98,9 +108,23 @@ async function buildDepartmentSummary(organizationId: string, departmentId: stri
     recordsByEmployee.set(record.employeeId, list);
   }
 
+  const corrections = await listCorrectionsForDepartmentMonth(
+    organizationId,
+    employees.map((e) => e.id),
+    start,
+    end,
+  );
+  const correctionByEmployeeAndDay = new Map<string, Map<number, string>>();
+  for (const c of corrections) {
+    const dayMap = correctionByEmployeeAndDay.get(c.employeeId) ?? new Map<number, string>();
+    dayMap.set(c.date.getUTCDate(), c.comment ?? '');
+    correctionByEmployeeAndDay.set(c.employeeId, dayMap);
+  }
+
   const summary: EmployeeSummaryLine[] = employees.map((employee) => {
     const employeeRecords = recordsByEmployee.get(employee.id) ?? [];
     const recordByDay = new Map(employeeRecords.map((r) => [r.date.getUTCDate(), r]));
+    const employeeCorrections = correctionByEmployeeAndDay.get(employee.id) ?? new Map<number, string>();
     const recordedDays = employeeRecords.length;
 
     const line: EmployeeSummaryLine = {
@@ -159,7 +183,8 @@ async function buildDepartmentSummary(organizationId: string, departmentId: stri
 
     for (let day = 1; day <= daysInMonth; day++) {
       const date = new Date(Date.UTC(year, month - 1, day));
-      line.days.push(mapRecordToDayCell(day, date, recordByDay.get(day)));
+      const correctionComment = employeeCorrections.get(day) ?? null;
+      line.days.push(mapRecordToDayCell(day, date, recordByDay.get(day), correctionComment));
     }
 
     return line;

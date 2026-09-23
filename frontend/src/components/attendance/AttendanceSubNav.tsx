@@ -16,15 +16,15 @@ interface Tab {
 const TABS: Tab[] = [
   { label: 'Kunlik davomat', href: '/attendance/daily', roles: [...MANAGE_ROLES, 'DEPARTMENT_HEAD'] },
   { label: 'Mening davomatim', href: '/attendance/my' },
-  { label: 'Tuzatish so‘rovlari', href: '/attendance/corrections', roles: [...MANAGE_ROLES, 'DEPARTMENT_HEAD'] },
   { label: "Bo'lim tabellari", href: '/attendance/timesheets/department', roles: [...MANAGE_ROLES, 'DEPARTMENT_HEAD'] },
   { label: 'Tashkilot tabeli', href: '/attendance/timesheets/organization', roles: MANAGE_ROLES },
   { label: 'Sozlamalar', href: '/attendance/settings', roles: MANAGE_ROLES },
 ];
 
 // Attendance modulining ikkinchi darajali navigatsiyasi — rolga qarab
-// tablar ko'rinadi/yashiriladi (masalan oddiy EMPLOYEE faqat "Mening
-// davomatim" va "Tuzatish so'rovlari"ni ko'radi).
+// tablar ko'rinadi/yashiriladi. "Tuzatish so'rovlari" alohida sahifa
+// sifatida olib tashlangan — DEPARTMENT_HEAD tuzatish so'rovini endi
+// faqat Kunlik davomat jadvalidagi ✏️ tugmasi orqali yuboradi.
 export function AttendanceSubNav() {
   const pathname = usePathname();
   const user = useAuthStore((s) => s.user);

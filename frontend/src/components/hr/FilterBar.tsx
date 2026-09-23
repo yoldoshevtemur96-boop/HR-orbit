@@ -16,10 +16,13 @@ interface FilterBarProps {
     options: SelectOption[];
     onChange: (value: string) => void;
   }[];
+  // Qidiruv/select'lardan keyin, action'dan oldin ko'rsatiladigan
+  // qo'shimcha element — masalan tez filtr tugmalari guruhi.
+  extra?: React.ReactNode;
   action?: React.ReactNode;
 }
 
-export function FilterBar({ search, onSearchChange, searchPlaceholder = 'Qidiruv...', selects, action }: FilterBarProps) {
+export function FilterBar({ search, onSearchChange, searchPlaceholder = 'Qidiruv...', selects, extra, action }: FilterBarProps) {
   return (
     <div className="flex flex-wrap items-center gap-2">
       <input
@@ -44,6 +47,7 @@ export function FilterBar({ search, onSearchChange, searchPlaceholder = 'Qidiruv
           ))}
         </select>
       ))}
+      {extra}
       <div className="ml-auto">{action}</div>
     </div>
   );

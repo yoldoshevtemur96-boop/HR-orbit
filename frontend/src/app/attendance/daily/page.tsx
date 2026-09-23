@@ -270,6 +270,28 @@ function DailyView({
               ]
             : []
         }
+        extra={
+          <div className="flex gap-1 rounded-lg border border-stone-200 bg-white p-1">
+            {(
+              [
+                { key: 'ALL', label: 'Barchasi' },
+                { key: 'LATE', label: 'Kechikkanlar' },
+                { key: 'ABSENT', label: 'Kelmaganlar' },
+              ] as const
+            ).map((f) => (
+              <button
+                key={f.key}
+                type="button"
+                onClick={() => setQuickFilter(f.key)}
+                className={`rounded-md px-3.5 py-1.5 text-xs font-semibold transition ${
+                  quickFilter === f.key ? 'bg-accent text-white' : 'text-stone-500 hover:bg-stone-50'
+                }`}
+              >
+                {f.label}
+              </button>
+            ))}
+          </div>
+        }
         action={
           <div className="flex flex-wrap items-center gap-2">
             <button
@@ -307,27 +329,6 @@ function DailyView({
           </div>
         }
       />
-
-      <div className="flex gap-1 rounded-lg border border-stone-200 bg-white p-1 self-start">
-        {(
-          [
-            { key: 'ALL', label: 'Barchasi' },
-            { key: 'LATE', label: 'Kechikkanlar' },
-            { key: 'ABSENT', label: 'Kelmaganlar' },
-          ] as const
-        ).map((f) => (
-          <button
-            key={f.key}
-            type="button"
-            onClick={() => setQuickFilter(f.key)}
-            className={`rounded-md px-3.5 py-1.5 text-xs font-semibold transition ${
-              quickFilter === f.key ? 'bg-accent text-white' : 'text-stone-500 hover:bg-stone-50'
-            }`}
-          >
-            {f.label}
-          </button>
-        ))}
-      </div>
 
       <p className="text-xs text-stone-400">{formatDateHuman(date)} — jami {filteredRows.length} ta xodim</p>
 
