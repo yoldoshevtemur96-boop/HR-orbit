@@ -103,6 +103,19 @@ export default function DepartmentTimesheetListPage() {
       ? currentTimesheet.status === 'DEPT_APPROVED' || currentTimesheet.status === 'CONSOLIDATED'
       : false;
 
+    const isEditable = currentTimesheet?.status === 'DRAFT' || currentTimesheet?.status === 'DEPT_REJECTED';
+
+    async function handleEditCell(employeeId: string, day: number, hours: number, comment: string) {
+      if (!currentTimesheet) return;
+      await api.put('/attendance/timesheets/cells', {
+        employeeId,
+        date: `${currentTimesheet.year}-${String(currentTimesheet.month).padStart(2, '0')}-${String(day).padStart(2, '0')}`,
+        hours,
+        comment,
+      });
+      load();
+    }
+
     async function handleSubmit() {
       if (!currentTimesheet) return;
       setError(null);
@@ -187,7 +200,17 @@ export default function DepartmentTimesheetListPage() {
             )}
             {error && <p className="rounded-md bg-rose-50 px-3 py-2 text-sm text-rose-700">{error}</p>}
 
-            <TimesheetGridTable rows={currentTimesheet.summaryData} daysInMonth={daysInMonth} isApproved={isApproved} />
+            {isEditable && (
+              <p className="text-xs text-stone-500">
+                Katakni bosib ishlagan soatni (1–8) va izohni o&apos;zgartirishingiz mumkin. O&apos;zgartirilgan kataklar qizil rangda.
+              </p>
+            )}
+            <TimesheetGridTable
+              rows={currentTimesheet.summaryData}
+              daysInMonth={daysInMonth}
+              isApproved={isApproved}
+              onEditCell={isEditable ? handleEditCell : undefined}
+            />
 
             {currentTimesheet.status === 'DRAFT' && (
               <div>

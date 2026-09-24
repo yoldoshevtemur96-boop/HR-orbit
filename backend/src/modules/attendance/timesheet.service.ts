@@ -28,6 +28,9 @@ interface DayCell {
   hours: number | null; // faqat ishlagan kun uchun (workedMinutes/60, yaxlitlangan)
   hasCorrection: boolean; // departament rahbari shu kun uchun izoh qoldirganmi
   correctionComment: string | null;
+  edited?: boolean; // katak qo'lda o'zgartirilgan (TimesheetCellEdit)
+  editComment?: string | null;
+  originalCode?: string; // o'zgartirishdan oldingi kod (turniket bo'yicha)
 }
 
 interface EmployeeSummaryLine {
@@ -88,6 +91,32 @@ function mapRecordToDayCell(
   }
 }
 
+function isWorkedCode(code: string) {
+  return code !== '' && !Number.isNaN(Number(code));
+}
+
+// Qatordagi bitta katakni qo'lda kiritilgan soat bilan almashtiradi va
+// qator jamlanmalarini (ishlagan kun/soat, kelmagan kun) moslashtiradi.
+// Tabel yig'ilganda ham, tayyor tabel snapshot'ini tahrirlashda ham
+// shu funksiya ishlatiladi — natija bir xil bo'lishi uchun.
+function applyCellEdit(line: EmployeeSummaryLine, day: number, hours: number, comment: string) {
+  const cell = line.days.find((c) => c.day === day);
+  if (!cell) return;
+
+  const wasWorked = isWorkedCode(cell.code);
+  if (!wasWorked) {
+    line.presentDays += 1;
+    if (cell.code === '' && line.absentDays > 0) line.absentDays -= 1;
+  }
+  line.workedHours = Math.round((line.workedHours - (cell.hours ?? 0) + hours) * 100) / 100;
+
+  if (!cell.edited) cell.originalCode = cell.code;
+  cell.code = String(hours);
+  cell.hours = hours;
+  cell.edited = true;
+  cell.editComment = comment;
+}
+
 async function buildDepartmentSummary(organizationId: string, departmentId: string, year: number, month: number) {
   const employees = await prisma.employee.findMany({
     where: { organizationId, departmentId, status: 'ACTIVE' },
@@ -114,6 +143,10 @@ async function buildDepartmentSummary(organizationId: string, departmentId: stri
     start,
     end,
   );
+  const cellEdits = await prisma.timesheetCellEdit.findMany({
+    where: { organizationId, employeeId: { in: employees.map((e) => e.id) }, date: { gte: start, lt: end } },
+  });
+
   const correctionByEmployeeAndDay = new Map<string, Map<number, string>>();
   for (const c of corrections) {
     const dayMap = correctionByEmployeeAndDay.get(c.employeeId) ?? new Map<number, string>();
@@ -185,6 +218,10 @@ async function buildDepartmentSummary(organizationId: string, departmentId: stri
       const date = new Date(Date.UTC(year, month - 1, day));
       const correctionComment = employeeCorrections.get(day) ?? null;
       line.days.push(mapRecordToDayCell(day, date, recordByDay.get(day), correctionComment));
+    }
+
+    for (const edit of cellEdits.filter((e) => e.employeeId === employee.id)) {
+      applyCellEdit(line, edit.date.getUTCDate(), edit.hours, edit.comment);
     }
 
     return line;
@@ -340,6 +377,87 @@ export async function hrApproveDepartmentTimesheet(
     where: { organizationId_departmentId_year_month: key },
     create: { ...key, ...approvedData },
     update: approvedData,
+  });
+}
+
+// Tabel katagini qo'lda o'zgartirish (1-8 soat + izoh):
+// - DEPARTMENT_HEAD — faqat o'z bo'limi, tabel hali yuborilmagan
+//   (DRAFT/DEPT_REJECTED) bo'lsa;
+// - HR/tabelchi — tashkilot tabelida, ya'ni bo'lim tabeli tasdiqlangan
+//   (DEPT_APPROVED) va hali konsolidatsiya qilinmagan bo'lsa.
+// O'zgartirish TimesheetCellEdit'da saqlanadi (qayta generatsiyada ham
+// qo'llanadi) va tabel snapshot'iga darhol yoziladi.
+export async function editTimesheetCell(
+  auth: AuthContext,
+  input: { employeeId: string; date: Date; hours: number; comment: string },
+) {
+  const employee = await prisma.employee.findFirst({
+    where: { id: input.employeeId, organizationId: auth.organizationId },
+    select: { id: true, departmentId: true },
+  });
+  if (!employee?.departmentId) throw AppError.notFound('Xodim topilmadi');
+
+  const year = input.date.getUTCFullYear();
+  const month = input.date.getUTCMonth() + 1;
+  const timesheet = await prisma.departmentTimesheet.findUnique({
+    where: {
+      organizationId_departmentId_year_month: {
+        organizationId: auth.organizationId,
+        departmentId: employee.departmentId,
+        year,
+        month,
+      },
+    },
+  });
+  if (!timesheet) throw AppError.notFound('Bu oy uchun bo\'lim tabeli topilmadi');
+
+  if (auth.role === 'DEPARTMENT_HEAD') {
+    const self = await getMyEmployee(auth);
+    if (self.departmentId !== employee.departmentId) throw AppError.forbidden();
+    if (timesheet.status !== 'DRAFT' && timesheet.status !== 'DEPT_REJECTED') {
+      throw AppError.badRequest("Tabel yuborilgan — endi o'zgartirib bo'lmaydi");
+    }
+  } else if (canManageAttendance(auth.role)) {
+    if (timesheet.status !== 'DEPT_APPROVED') {
+      throw AppError.badRequest("Faqat tasdiqlangan va hali rahbariyatga yuborilmagan tabelni o'zgartirish mumkin");
+    }
+  } else {
+    throw AppError.forbidden();
+  }
+
+  await prisma.timesheetCellEdit.upsert({
+    where: {
+      organizationId_employeeId_date: {
+        organizationId: auth.organizationId,
+        employeeId: input.employeeId,
+        date: input.date,
+      },
+    },
+    create: {
+      organizationId: auth.organizationId,
+      employeeId: input.employeeId,
+      date: input.date,
+      hours: input.hours,
+      comment: input.comment,
+      editedByUserId: auth.userId,
+      editedByRole: auth.role,
+    },
+    update: {
+      hours: input.hours,
+      comment: input.comment,
+      editedByUserId: auth.userId,
+      editedByRole: auth.role,
+    },
+  });
+
+  const summaryData = timesheet.summaryData as unknown as EmployeeSummaryLine[];
+  const line = summaryData.find((l) => l.employeeId === input.employeeId);
+  if (!line) throw AppError.badRequest('Xodim bu tabelda yo\'q');
+  applyCellEdit(line, input.date.getUTCDate(), input.hours, input.comment);
+
+  return prisma.departmentTimesheet.update({
+    where: { id: timesheet.id },
+    data: { summaryData: summaryData as any },
   });
 }
 

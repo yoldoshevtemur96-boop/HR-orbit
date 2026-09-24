@@ -233,6 +233,16 @@ export default function OrganizationTimesheetListPage() {
     }
   }
 
+  async function handleEditCell(employeeId: string, day: number, hours: number, comment: string) {
+    await api.put('/attendance/timesheets/cells', {
+      employeeId,
+      date: `${periodLabel(year, month)}-${String(day).padStart(2, '0')}`,
+      hours,
+      comment,
+    });
+    loadDeptTimesheets();
+  }
+
   async function handleSendToLeadership() {
     if (missingFromApproved.length > 0) {
       const names = missingFromApproved.map((d) => d.name).join(', ');
@@ -460,12 +470,20 @@ export default function OrganizationTimesheetListPage() {
                   </FilterField>
                 </FilterBar>
 
-                <p className="text-sm text-stone-500">{combinedRows.length} xodim ko&apos;rsatilmoqda</p>
+                <p className="text-sm text-stone-500">
+                  {combinedRows.length} xodim ko&apos;rsatilmoqda
+                  {canManage && ' · katakni bosib ishlagan soatni (1–8) va izohni o\'zgartirish mumkin, o\'zgartirilganlar qizil rangda'}
+                </p>
 
                 {combinedRows.length === 0 ? (
                   <p className="text-sm text-stone-400">Filtr bo&apos;yicha xodim topilmadi.</p>
                 ) : (
-                  <TimesheetGridTable rows={combinedRows} daysInMonth={daysInMonth} isApproved />
+                  <TimesheetGridTable
+                    rows={combinedRows}
+                    daysInMonth={daysInMonth}
+                    isApproved
+                    onEditCell={canManage ? handleEditCell : undefined}
+                  />
                 )}
 
                 {canManage && (

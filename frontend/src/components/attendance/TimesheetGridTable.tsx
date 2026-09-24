@@ -1,19 +1,24 @@
 'use client';
 
 import { useState } from 'react';
+import { Modal } from '@/components/hr/Modal';
 import type { EmployeeAttendanceSummaryLine, TimesheetDayCell } from '@/types/attendance';
 
 interface TimesheetGridTableProps {
   rows: EmployeeAttendanceSummaryLine[];
   daysInMonth: number;
   isApproved: boolean;
+  // Berilsa — katakni bosib 1-8 soat va izoh kiritish mumkin
+  onEditCell?: (employeeId: string, day: number, hours: number, comment: string) => Promise<void>;
 }
 
 // Kod turiga qarab katakcha foni — 1С-uslubidagi tabelga yaqinlashtirilgan
 // (aynan bir xil emas): raqam=ishlagan kun (oq), Д=ta'til (pushti),
 // К=kasallik (sariq), С=safar (binafsha), М=masofaviy (moviy),
-// В=dam olish kuni (yashil), bo'sh=neytral.
+// В=dam olish kuni (yashil), bo'sh=neytral. Qo'lda o'zgartirilgan
+// katak — qizil.
 function cellClassName(cell: TimesheetDayCell): string {
+  if (cell.edited) return 'bg-red-100 font-bold text-red-700';
   if (cell.code === 'В') return 'bg-emerald-50 text-emerald-700';
   if (cell.code === 'Д') return 'bg-rose-50 text-rose-700';
   if (cell.code === 'К') return 'bg-amber-50 text-amber-700';
@@ -25,15 +30,47 @@ function cellClassName(cell: TimesheetDayCell): string {
 
 const STICKY_COL_CLASS = 'sticky bg-white';
 
-interface OpenPopover {
+const HOUR_OPTIONS = [1, 2, 3, 4, 5, 6, 7, 8];
+
+interface OpenCell {
   employeeId: string;
-  day: number;
-  comment: string;
+  employeeName: string;
+  cell: TimesheetDayCell;
 }
 
-export function TimesheetGridTable({ rows, daysInMonth, isApproved }: TimesheetGridTableProps) {
+export function TimesheetGridTable({ rows, daysInMonth, isApproved, onEditCell }: TimesheetGridTableProps) {
   const days = Array.from({ length: daysInMonth }, (_, i) => i + 1);
-  const [openPopover, setOpenPopover] = useState<OpenPopover | null>(null);
+  const [openCell, setOpenCell] = useState<OpenCell | null>(null);
+  const [hours, setHours] = useState<number | null>(null);
+  const [comment, setComment] = useState('');
+  const [isSaving, setIsSaving] = useState(false);
+  const [saveError, setSaveError] = useState<string | null>(null);
+
+  const isEditable = Boolean(onEditCell);
+
+  function openEditor(employeeId: string, employeeName: string, cell: TimesheetDayCell) {
+    if (!isEditable && !cell.edited && !cell.hasCorrection) return;
+    setOpenCell({ employeeId, employeeName, cell });
+    const current = Number(cell.code);
+    setHours(cell.edited && current >= 1 && current <= 8 ? current : null);
+    setComment(cell.editComment ?? '');
+    setSaveError(null);
+  }
+
+  async function handleSave(e: React.FormEvent) {
+    e.preventDefault();
+    if (!openCell || !onEditCell || hours === null || !comment.trim()) return;
+    setIsSaving(true);
+    setSaveError(null);
+    try {
+      await onEditCell(openCell.employeeId, openCell.cell.day, hours, comment.trim());
+      setOpenCell(null);
+    } catch (err: any) {
+      setSaveError(err?.response?.data?.error?.message ?? 'Saqlashda xatolik yuz berdi');
+    } finally {
+      setIsSaving(false);
+    }
+  }
 
   return (
     <div className="relative overflow-x-auto rounded-lg border border-stone-200 bg-white">
@@ -86,39 +123,25 @@ export function TimesheetGridTable({ rows, daysInMonth, isApproved }: TimesheetG
                     <span className="text-rose-500">✗</span>
                   )}
                 </td>
-                {row.days.map((cell) => (
-                  <td
-                    key={cell.day}
-                    className={`relative border-r border-stone-100 px-1 py-1.5 text-center font-medium ${cellClassName(cell)} ${
-                      cell.hasCorrection ? 'ring-2 ring-inset ring-sky-500' : ''
-                    } ${cell.hasCorrection ? 'cursor-pointer' : ''}`}
-                    onClick={() => {
-                      if (!cell.hasCorrection) return;
-                      setOpenPopover({ employeeId: row.employeeId, day: cell.day, comment: cell.correctionComment ?? '' });
-                    }}
-                  >
-                    {cell.code}
-                    {openPopover?.employeeId === row.employeeId && openPopover.day === cell.day && (
-                      <div
-                        className="absolute left-1/2 top-full z-30 mt-1 w-56 -translate-x-1/2 rounded-lg border border-stone-200 bg-white p-3 text-left text-xs font-normal normal-case text-stone-700 shadow-lg"
-                        onClick={(e) => e.stopPropagation()}
-                      >
-                        <div className="mb-1.5 flex items-center justify-between">
-                          <span className="font-semibold text-stone-800">Izoh</span>
-                          <button
-                            type="button"
-                            onClick={() => setOpenPopover(null)}
-                            aria-label="Yopish"
-                            className="text-stone-400 hover:text-stone-700"
-                          >
-                            ✕
-                          </button>
-                        </div>
-                        <p>{openPopover.comment || 'Izoh yo‘q'}</p>
-                      </div>
-                    )}
-                  </td>
-                ))}
+                {row.days.map((cell) => {
+                  const clickable = isEditable || cell.edited || cell.hasCorrection;
+                  return (
+                    <td
+                      key={cell.day}
+                      title={
+                        cell.edited
+                          ? `O'zgartirilgan${cell.originalCode ? ` (avval: ${cell.originalCode})` : ''}: ${cell.editComment ?? ''}`
+                          : undefined
+                      }
+                      className={`border-r border-stone-100 px-1 py-1.5 text-center font-medium ${cellClassName(cell)} ${
+                        cell.hasCorrection && !cell.edited ? 'ring-2 ring-inset ring-sky-500' : ''
+                      } ${clickable ? 'cursor-pointer hover:outline hover:outline-1 hover:outline-accent' : ''}`}
+                      onClick={() => openEditor(row.employeeId, row.fullName, cell)}
+                    >
+                      {cell.code}
+                    </td>
+                  );
+                })}
                 <td className="border-l-2 border-stone-300 px-2 py-1.5 text-center font-semibold text-stone-800">
                   {totalDays}
                 </td>
@@ -128,6 +151,84 @@ export function TimesheetGridTable({ rows, daysInMonth, isApproved }: TimesheetG
           })}
         </tbody>
       </table>
+
+      <Modal
+        isOpen={openCell !== null}
+        title={openCell ? `${openCell.employeeName} — ${openCell.cell.day}-kun` : ''}
+        onClose={() => !isSaving && setOpenCell(null)}
+      >
+        {openCell && (
+          <div className="flex flex-col gap-3 text-sm">
+            <p className="text-stone-500">
+              Hozirgi qiymat: <span className="font-semibold text-stone-800">{openCell.cell.code || '—'}</span>
+              {openCell.cell.edited && openCell.cell.originalCode !== undefined && (
+                <>
+                  {' '}
+                  · turniket bo&apos;yicha:{' '}
+                  <span className="font-semibold text-stone-800">{openCell.cell.originalCode || '—'}</span>
+                </>
+              )}
+            </p>
+            {openCell.cell.hasCorrection && (
+              <p className="rounded-md bg-sky-50 px-3 py-2 text-sky-800">Rahbar izohi: {openCell.cell.correctionComment || '—'}</p>
+            )}
+
+            {isEditable ? (
+              <form onSubmit={handleSave} className="flex flex-col gap-3">
+                <div>
+                  <label className="mb-1 block text-xs font-medium text-stone-500">Ishlagan soat</label>
+                  <div className="grid grid-cols-8 gap-1">
+                    {HOUR_OPTIONS.map((h) => (
+                      <button
+                        key={h}
+                        type="button"
+                        onClick={() => setHours(h)}
+                        className={`rounded-md border py-2 text-sm font-semibold transition ${
+                          hours === h ? 'border-accent bg-accent text-white' : 'border-stone-200 text-stone-700 hover:border-stone-300'
+                        }`}
+                      >
+                        {h}
+                      </button>
+                    ))}
+                  </div>
+                </div>
+                <div>
+                  <label className="mb-1 block text-xs font-medium text-stone-500">Izoh (majburiy)</label>
+                  <textarea
+                    value={comment}
+                    onChange={(e) => setComment(e.target.value)}
+                    rows={3}
+                    placeholder="Masalan: turniket ishlamadi, xodim ishda bo'lgan"
+                    className="w-full rounded-lg border border-stone-200 px-3 py-2 text-sm outline-none focus:border-accent focus:ring-2 focus:ring-accent/15"
+                  />
+                </div>
+                {saveError && <p className="rounded-md bg-rose-50 px-3 py-2 text-rose-700">{saveError}</p>}
+                <div className="flex justify-end gap-2">
+                  <button
+                    type="button"
+                    disabled={isSaving}
+                    onClick={() => setOpenCell(null)}
+                    className="rounded-lg border border-stone-200 px-4 py-2 font-medium text-stone-600 hover:bg-stone-50"
+                  >
+                    Bekor qilish
+                  </button>
+                  <button
+                    type="submit"
+                    disabled={isSaving || hours === null || !comment.trim()}
+                    className="rounded-lg bg-accent px-4 py-2 font-semibold text-white transition hover:opacity-90 disabled:opacity-50"
+                  >
+                    {isSaving ? 'Saqlanmoqda...' : 'Saqlash'}
+                  </button>
+                </div>
+              </form>
+            ) : (
+              openCell.cell.edited && (
+                <p className="rounded-md bg-red-50 px-3 py-2 text-red-800">Izoh: {openCell.cell.editComment || '—'}</p>
+              )
+            )}
+          </div>
+        )}
+      </Modal>
     </div>
   );
 }

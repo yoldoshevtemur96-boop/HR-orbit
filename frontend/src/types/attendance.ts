@@ -77,6 +77,9 @@ export interface TimesheetDayCell {
   hours: number | null;
   hasCorrection: boolean;
   correctionComment: string | null;
+  edited?: boolean;
+  editComment?: string | null;
+  originalCode?: string;
 }
 
 export interface EmployeeAttendanceSummaryLine {

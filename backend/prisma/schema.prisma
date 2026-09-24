@@ -39,6 +39,7 @@ model Organization {
   notifications     Notification[]
   attendanceRecords AttendanceRecord[]
   attendanceCorrections AttendanceCorrection[]
+  timesheetCellEdits    TimesheetCellEdit[]
   departmentTimesheets DepartmentTimesheet[]
   organizationTimesheets OrganizationTimesheet[]
   attendanceSettings AttendanceSettings?
@@ -687,6 +688,28 @@ enum DepartmentTimesheetStatus {
 
 // Bitta departament, bitta oy uchun tabel. Workflow Engine ishlatilmaydi —
 // bu obyekt bitta xodimga emas, butun departamentga tegishli.
+// Tabel katagiga qo'lda kiritilgan o'zgartirish (1-8 soat + izoh).
+// Departament rahbari (yuborishdan oldin) yoki HR/tabelchi (tashkilot
+// tabelida) kiritadi. Tabel yig'ilganda turniket ma'lumoti ustidan qo'llanadi.
+model TimesheetCellEdit {
+  id             String   @id @default(cuid())
+  organizationId String
+  employeeId     String
+  date           DateTime @db.Date
+  hours          Int
+  comment        String
+  editedByUserId String
+  editedByRole   RoleName
+  createdAt      DateTime @default(now())
+  updatedAt      DateTime @updatedAt
+
+  organization Organization @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+
+  @@unique([organizationId, employeeId, date])
+  @@index([organizationId, date])
+  @@map("timesheet_cell_edits")
+}
+
 model DepartmentTimesheet {
   id                   String                    @id @default(cuid())
   organizationId       String

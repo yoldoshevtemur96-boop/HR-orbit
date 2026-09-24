@@ -203,6 +203,22 @@ attendanceRouter.post(
   },
 );
 
+const editCellSchema = z.object({
+  employeeId: z.string().min(1),
+  date: z.string().regex(/^\d{4}-\d{2}-\d{2}$/),
+  hours: z.coerce.number().int().min(1).max(8),
+  comment: z.string().trim().min(1, 'Izoh majburiy'),
+});
+
+attendanceRouter.put('/timesheets/cells', async (req, res) => {
+  if (!canViewDepartmentAttendance(req.auth!.role)) {
+    throw AppError.forbidden();
+  }
+  const { date, ...input } = editCellSchema.parse(req.body);
+  const timesheet = await timesheetService.editTimesheetCell(req.auth!, { ...input, date: new Date(`${date}T00:00:00.000Z`) });
+  res.json(timesheet);
+});
+
 attendanceRouter.get('/timesheets/department', async (req, res) => {
   if (!canViewDepartmentAttendance(req.auth!.role)) {
     throw AppError.forbidden();

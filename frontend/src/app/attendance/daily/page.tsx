@@ -4,14 +4,11 @@ import { useCallback, useEffect, useMemo, useState } from 'react';
 import { api } from '@/lib/api';
 import { DataTable, type DataTableColumn } from '@/components/hr/DataTable';
 import { FilterBar } from '@/components/hr/FilterBar';
-import { Modal } from '@/components/hr/Modal';
 import { AttendanceDayStatusBadge } from '@/components/attendance/AttendanceDayStatusBadge';
 import { AttendanceRecordEditDrawer } from '@/components/attendance/AttendanceRecordEditDrawer';
-import { CorrectionRequestForm } from '@/components/attendance/CorrectionRequestForm';
 import { DepartmentAccordion } from '@/components/attendance/DepartmentAccordion';
 import { useAuthStore } from '@/store/authStore';
 import type {
-  AttendanceDayStatus,
   AttendanceRecord,
   AttendanceSettings,
   DailyAttendanceRow,
@@ -20,10 +17,6 @@ import type {
 import type { Department } from '@/types/core-hr';
 
 const MANAGE_ROLES = ['SUPER_ADMIN', 'HR_MANAGER', 'TIMEKEEPER'];
-
-// Faqat shu holatlarda tuzatish so'rovi ma'noga ega — kelmagan/kechikkan
-// kunlar uchun. Ta'til, safar va h.k. HR/tabelchi tomonidan qo'yiladi.
-const CORRECTABLE_STATUSES: AttendanceDayStatus[] = ['LATE', 'ABSENT', 'EARLY_LEAVE'];
 
 type ViewMode = 'daily' | 'monthly' | 'statistics';
 type QuickFilter = 'ALL' | 'LATE' | 'ABSENT';
@@ -53,7 +46,6 @@ function shiftDate(iso: string, deltaDays: number): string {
 export default function DailyAttendancePage() {
   const user = useAuthStore((s) => s.user);
   const canManage = user ? MANAGE_ROLES.includes(user.role) : false;
-  const canRequestCorrection = user?.role === 'DEPARTMENT_HEAD';
   const canGroupByDepartment = canManage;
 
   const [view, setView] = useState<ViewMode>('daily');
@@ -87,7 +79,7 @@ export default function DailyAttendancePage() {
       </div>
 
       {view === 'daily' && (
-        <DailyView canManage={canManage} canRequestCorrection={canRequestCorrection} canGroupByDepartment={canGroupByDepartment} />
+        <DailyView canManage={canManage} canGroupByDepartment={canGroupByDepartment} />
       )}
       {view === 'monthly' && <MonthlyView canManage={canManage} />}
       {view === 'statistics' && <StatisticsView />}
@@ -99,15 +91,7 @@ export default function DailyAttendancePage() {
 // Кунлик
 // ---------------------------------------------------------------------------
 
-function DailyView({
-  canManage,
-  canRequestCorrection,
-  canGroupByDepartment,
-}: {
-  canManage: boolean;
-  canRequestCorrection: boolean;
-  canGroupByDepartment: boolean;
-}) {
+function DailyView({ canManage, canGroupByDepartment }: { canManage: boolean; canGroupByDepartment: boolean }) {
   const [date, setDate] = useState(todayIso());
   const [departmentId, setDepartmentId] = useState('');
   const [departments, setDepartments] = useState<Department[]>([]);
@@ -116,7 +100,6 @@ function DailyView({
   const [search, setSearch] = useState('');
   const [quickFilter, setQuickFilter] = useState<QuickFilter>('ALL');
   const [selectedRow, setSelectedRow] = useState<DailyAttendanceRow | null>(null);
-  const [correctionRow, setCorrectionRow] = useState<DailyAttendanceRow | null>(null);
   const [settings, setSettings] = useState<AttendanceSettings | null>(null);
   const [isExporting, setIsExporting] = useState(false);
 
@@ -213,39 +196,23 @@ function DailyView({
     },
     { key: 'status', header: 'Holat', render: (r) => <AttendanceDayStatusBadge status={r.record?.status ?? 'ABSENT'} /> },
     { key: 'note', header: 'Izoh', render: (r) => r.record?.note ?? '—' },
-    ...(canManage || canRequestCorrection
+    // Departament rahbari bu yerda tahrirlamaydi — u o'z bo'limi tabelidagi
+    // katakni bosib soat va izoh kiritadi (Tuzilma tabeli sahifasi).
+    ...(canManage
       ? [
           {
             key: 'actions',
             header: '',
             align: 'right' as const,
-            render: (r: DailyAttendanceRow) => {
-              const status = r.record?.status ?? 'ABSENT';
-              return (
-                <div className="inline-flex items-center gap-1.5">
-                  {canManage && (
-                    <button
-                      type="button"
-                      onClick={() => setSelectedRow(r)}
-                      className="rounded-md border border-stone-200 px-2.5 py-1 text-xs font-medium text-stone-600 hover:bg-stone-50"
-                    >
-                      Tuzatish
-                    </button>
-                  )}
-                  {canRequestCorrection && CORRECTABLE_STATUSES.includes(status) && (
-                    <button
-                      type="button"
-                      onClick={() => setCorrectionRow(r)}
-                      aria-label={`${r.employee.fullName} uchun tuzatish so'rovi`}
-                      title="Tuzatish so'rovi yuborish"
-                      className="rounded-md p-1.5 text-stone-400 transition hover:bg-stone-100 hover:text-accent"
-                    >
-                      ✏️
-                    </button>
-                  )}
-                </div>
-              );
-            },
+            render: (r: DailyAttendanceRow) => (
+              <button
+                type="button"
+                onClick={() => setSelectedRow(r)}
+                className="rounded-md border border-stone-200 px-2.5 py-1 text-xs font-medium text-stone-600 hover:bg-stone-50"
+              >
+                Tuzatish
+              </button>
+            ),
           },
         ]
       : []),
@@ -376,24 +343,6 @@ function DailyView({
           load();
         }}
       />
-
-      <Modal
-        isOpen={correctionRow !== null}
-        title={`Tuzatish so'rovi — ${correctionRow?.employee.fullName ?? ''}`}
-        onClose={() => setCorrectionRow(null)}
-      >
-        {correctionRow && (
-          <CorrectionRequestForm
-            employeeId={correctionRow.employee.id}
-            employeeName={correctionRow.employee.fullName}
-            presetDate={date}
-            onCreated={() => {
-              setCorrectionRow(null);
-              load();
-            }}
-          />
-        )}
-      </Modal>
     </div>
   );
 }
