@@ -392,8 +392,9 @@ export async function previewDepartmentSummary(auth: AuthContext, departmentId: 
 }
 
 // Tabel katagini qo'lda o'zgartirish (1-8 soat + izoh):
-// - DEPARTMENT_HEAD — faqat o'z bo'limi, tabel hali yuborilmagan
-//   (DRAFT/DEPT_REJECTED) bo'lsa;
+// - DEPARTMENT_HEAD — faqat o'z bo'limi, konsolidatsiyadan oldin istalgan
+//   bosqichda (yuborilgan/tasdiqlangan bo'lsa ham — u holda tabel
+//   qoralamaga qaytadi). HR tasdiqlab o'tkazgan tabel yopiq;
 // - HR/tabelchi — tashkilot tabelida (Joriy va Tasdiqlangan), bo'lim
 //   tabeli hali konsolidatsiya qilinmagan bo'lsa.
 // O'zgartirish TimesheetCellEdit'da saqlanadi (qayta generatsiyada ham
@@ -424,8 +425,11 @@ export async function editTimesheetCell(
     if (!timesheet) throw AppError.notFound('Bu oy uchun bo\'lim tabeli topilmadi');
     const self = await getMyEmployee(auth);
     if (self.departmentId !== employee.departmentId) throw AppError.forbidden();
-    if (timesheet.status !== 'DRAFT' && timesheet.status !== 'DEPT_REJECTED') {
-      throw AppError.badRequest("Tabel yuborilgan — endi o'zgartirib bo'lmaydi");
+    if (timesheet.status === 'CONSOLIDATED') {
+      throw AppError.badRequest("Tabel rahbariyatga yuborilgan — endi o'zgartirib bo'lmaydi");
+    }
+    if (timesheet.hrOverride) {
+      throw AppError.badRequest("Bu tabelni HR tasdiqlab o'tkazgan — o'zgartirib bo'lmaydi");
     }
   } else if (canManageAttendance(auth.role)) {
     // HR/tabelchi istalgan bosqichda (hatto tabel hali yaratilmagan
@@ -472,9 +476,17 @@ export async function editTimesheetCell(
   if (!line) return timesheet;
   applyCellEdit(line, input.date.getUTCDate(), input.hours, input.comment);
 
+  // Rahbar yuborilgan/tasdiqlangan tabelni o'zgartirsa — tabel qoralamaga
+  // qaytadi va HR'ga qayta yuborilib, qayta tasdiqlanishi kerak.
+  const revertToDraft =
+    auth.role === 'DEPARTMENT_HEAD' && (timesheet.status === 'DEPT_SUBMITTED' || timesheet.status === 'DEPT_APPROVED');
+
   return prisma.departmentTimesheet.update({
     where: { id: timesheet.id },
-    data: { summaryData: summaryData as any },
+    data: {
+      summaryData: summaryData as any,
+      ...(revertToDraft && { status: 'DRAFT', submittedAt: null, deptApprovedByUserId: null, deptApprovedAt: null }),
+    },
   });
 }
 

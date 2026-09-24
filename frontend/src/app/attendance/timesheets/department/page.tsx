@@ -103,7 +103,11 @@ export default function DepartmentTimesheetListPage() {
       ? currentTimesheet.status === 'DEPT_APPROVED' || currentTimesheet.status === 'CONSOLIDATED'
       : false;
 
-    const isEditable = currentTimesheet?.status === 'DRAFT' || currentTimesheet?.status === 'DEPT_REJECTED';
+    // Rahbariyatga yuborilgunga qadar tahrirlash mumkin. Yuborilgan yoki
+    // tasdiqlangan tabel o'zgartirilsa, backend uni qoralamaga qaytaradi —
+    // shunda "HR'ga yuborish" tugmasi yana chiqadi.
+    const isEditable = Boolean(currentTimesheet) && currentTimesheet.status !== 'CONSOLIDATED' && !currentTimesheet.hrOverride;
+    const isSentToHr = currentTimesheet?.status === 'DEPT_SUBMITTED' || currentTimesheet?.status === 'DEPT_APPROVED';
 
     async function handleEditCell(employeeId: string, day: number, hours: number, comment: string) {
       if (!currentTimesheet) return;
@@ -200,6 +204,13 @@ export default function DepartmentTimesheetListPage() {
             )}
             {error && <p className="rounded-md bg-rose-50 px-3 py-2 text-sm text-rose-700">{error}</p>}
 
+            {isEditable && isSentToHr && (
+              <p className="rounded-md bg-sky-50 px-3 py-2 text-sm text-sky-800">
+                Tabel HR&apos;ga yuborilgan
+                {currentTimesheet.status === 'DEPT_APPROVED' ? ' va tasdiqlangan' : ''}. O&apos;zgartirish kiritsangiz, tabel
+                qoralamaga qaytadi — uni HR&apos;ga qayta yuborishingiz va qayta tasdiqlatishingiz kerak bo&apos;ladi.
+              </p>
+            )}
             {isEditable && (
               <p className="text-xs text-stone-500">
                 Katakni bosib ishlagan soatni (1–8) va izohni o&apos;zgartirishingiz mumkin. O&apos;zgartirilgan kataklar qizil rangda.
