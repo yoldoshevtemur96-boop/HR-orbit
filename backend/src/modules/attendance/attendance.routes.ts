@@ -228,6 +228,13 @@ attendanceRouter.get('/timesheets/department', async (req, res) => {
   res.json(timesheets);
 });
 
+// /:id dan oldin turishi shart — aks holda "preview" id sifatida ushlanadi
+attendanceRouter.get('/timesheets/department/preview', async (req, res) => {
+  const { departmentId, year, month } = generateDeptTimesheetSchema.parse(req.query);
+  const summary = await timesheetService.previewDepartmentSummary(req.auth!, departmentId, year, month);
+  res.json(summary);
+});
+
 attendanceRouter.get('/timesheets/department/:id', async (req, res) => {
   if (!canViewDepartmentAttendance(req.auth!.role)) {
     throw AppError.forbidden();

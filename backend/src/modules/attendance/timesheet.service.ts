@@ -380,6 +380,17 @@ export async function hrApproveDepartmentTimesheet(
   });
 }
 
+// Bo'lim tabelini bazaga saqlamasdan turniket ma'lumotidan yig'ib
+// qaytaradi — HR hali yaratilmagan/yuborilmagan tabelni ko'rishi uchun.
+export async function previewDepartmentSummary(auth: AuthContext, departmentId: string, year: number, month: number) {
+  if (!canManageAttendance(auth.role)) {
+    throw AppError.forbidden();
+  }
+  const department = await prisma.department.findFirst({ where: { id: departmentId, organizationId: auth.organizationId } });
+  if (!department) throw AppError.notFound("Bo'lim topilmadi");
+  return buildDepartmentSummary(auth.organizationId, departmentId, year, month);
+}
+
 // Tabel katagini qo'lda o'zgartirish (1-8 soat + izoh):
 // - DEPARTMENT_HEAD — faqat o'z bo'limi, tabel hali yuborilmagan
 //   (DRAFT/DEPT_REJECTED) bo'lsa;

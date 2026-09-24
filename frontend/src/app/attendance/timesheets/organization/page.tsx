@@ -7,7 +7,7 @@ import { TimesheetStatusBadge } from '@/components/attendance/TimesheetStatusBad
 import { TimesheetGridTable } from '@/components/attendance/TimesheetGridTable';
 import { Modal } from '@/components/hr/Modal';
 import { useAuthStore } from '@/store/authStore';
-import type { DepartmentTimesheet, OrganizationTimesheet } from '@/types/attendance';
+import type { DepartmentTimesheet, EmployeeAttendanceSummaryLine, OrganizationTimesheet } from '@/types/attendance';
 import type { Department } from '@/types/core-hr';
 
 const MANAGE_ROLES = ['SUPER_ADMIN', 'HR_MANAGER', 'TIMEKEEPER'];
@@ -68,6 +68,10 @@ function periodLabel(y: number, m: number) {
   return `${y}-${String(m).padStart(2, '0')}`;
 }
 
+function rowKey(row: IncomingRow) {
+  return `${row.departmentId}-${row.year}-${row.month}`;
+}
+
 function canOverride(row: IncomingRow) {
   return row.state !== 'DEPT_SUBMITTED';
 }
@@ -105,6 +109,12 @@ export default function OrganizationTimesheetListPage() {
   const [orgTimesheets, setOrgTimesheets] = useState<OrganizationTimesheet[] | null>(null);
   const [isSubmitting, setIsSubmitting] = useState(false);
   const [error, setError] = useState<string | null>(null);
+
+  // Joriy tabda ochilgan bo'lim va yaratilmagan tabellar uchun olingan
+  // (saqlanmagan) turniket bo'yicha ko'rinish
+  const [expandedKey, setExpandedKey] = useState<string | null>(null);
+  const [previews, setPreviews] = useState<Record<string, EmployeeAttendanceSummaryLine[]>>({});
+  const [previewErrors, setPreviewErrors] = useState<Record<string, string>>({});
 
   const [overrideTarget, setOverrideTarget] = useState<OverrideTarget | null>(null);
   const [overrideReason, setOverrideReason] = useState('');
@@ -190,6 +200,28 @@ export default function OrganizationTimesheetListPage() {
     approved: isDeptDataLoading ? null : approved.length,
     archive: orgTimesheets === null ? null : archive.length,
   };
+
+  function toggleExpanded(row: IncomingRow) {
+    const key = rowKey(row);
+    if (expandedKey === key) {
+      setExpandedKey(null);
+      return;
+    }
+    setExpandedKey(key);
+    if (row.timesheet || previews[key]) return;
+    setPreviewErrors((prev) => {
+      const { [key]: _removed, ...rest } = prev;
+      return rest;
+    });
+    api
+      .get<EmployeeAttendanceSummaryLine[]>('/attendance/timesheets/department/preview', {
+        params: { departmentId: row.departmentId, year: row.year, month: row.month },
+      })
+      .then((res) => setPreviews((prev) => ({ ...prev, [key]: res.data })))
+      .catch((err) =>
+        setPreviewErrors((prev) => ({ ...prev, [key]: err?.response?.data?.error?.message ?? "Ro'yxatni yuklab bo'lmadi" })),
+      );
+  }
 
   function openOverride(rows: IncomingRow[]) {
     setOverrideTarget({ rows });
@@ -366,49 +398,79 @@ export default function OrganizationTimesheetListPage() {
               ) : (
                 filteredIncoming.map((r) => {
                   const name = departmentNameById.get(r.departmentId) ?? r.departmentId;
+                  const key = rowKey(r);
+                  const isExpanded = expandedKey === key;
+                  const expandedRows = r.timesheet ? r.timesheet.summaryData : previews[key];
                   return (
-                    <div
-                      key={`${r.departmentId}-${r.year}-${r.month}`}
-                      className="flex flex-wrap items-center justify-between gap-3 rounded-lg border border-stone-200 bg-white px-5 py-4"
-                    >
-                      <div>
-                        {r.timesheet ? (
-                          <Link
-                            href={`/attendance/timesheets/department/${r.timesheet.id}`}
-                            className="text-base font-semibold text-stone-800 hover:text-accent"
-                          >
-                            {name}
-                          </Link>
-                        ) : (
-                          <p className="text-base font-semibold text-stone-800">{name}</p>
-                        )}
-                        <p className="text-sm text-stone-400">
-                          {periodLabel(r.year, r.month)}
-                          {r.timesheet ? ` · ${r.timesheet.summaryData.length} xodim` : ' · rahbar tabelni hali ochmagan'}
-                        </p>
+                    <div key={key} className="rounded-lg border border-stone-200 bg-white">
+                      <div
+                        role="button"
+                        tabIndex={0}
+                        onClick={() => toggleExpanded(r)}
+                        onKeyDown={(e) => {
+                          if (e.key === 'Enter' || e.key === ' ') {
+                            e.preventDefault();
+                            toggleExpanded(r);
+                          }
+                        }}
+                        className="flex cursor-pointer flex-wrap items-center justify-between gap-3 px-5 py-4 transition hover:bg-stone-50"
+                      >
+                        <div className="flex items-center gap-3">
+                          <span className={`text-stone-400 transition-transform ${isExpanded ? 'rotate-90' : ''}`}>▶</span>
+                          <div>
+                            <p className="text-base font-semibold text-stone-800">{name}</p>
+                            <p className="text-sm text-stone-400">
+                              {periodLabel(r.year, r.month)}
+                              {r.timesheet ? ` · ${r.timesheet.summaryData.length} xodim` : ' · rahbar tabelni hali ochmagan'}
+                            </p>
+                          </div>
+                        </div>
+                        <div className="flex items-center gap-3" onClick={(e) => e.stopPropagation()}>
+                          <span className={`rounded-full px-2.5 py-1 text-xs font-medium ${INCOMING_STATE_STYLE[r.state]}`}>
+                            {INCOMING_STATE_LABEL[r.state]}
+                          </span>
+                          {canManage && canOverride(r) && (
+                            <button
+                              type="button"
+                              onClick={() => openOverride([r])}
+                              className="rounded-lg bg-accent px-3 py-2 text-sm font-semibold text-white transition hover:opacity-90"
+                            >
+                              Tasdiqlab o&apos;tkazish
+                            </button>
+                          )}
+                          {r.state === 'DEPT_SUBMITTED' && r.timesheet && (
+                            <Link
+                              href={`/attendance/timesheets/department/${r.timesheet.id}`}
+                              className="rounded-lg border border-stone-200 px-3 py-2 text-sm font-semibold text-stone-700 transition hover:border-stone-300"
+                            >
+                              Ko&apos;rib chiqish
+                            </Link>
+                          )}
+                        </div>
                       </div>
-                      <div className="flex items-center gap-3">
-                        <span className={`rounded-full px-2.5 py-1 text-xs font-medium ${INCOMING_STATE_STYLE[r.state]}`}>
-                          {INCOMING_STATE_LABEL[r.state]}
-                        </span>
-                        {canManage && canOverride(r) && (
-                          <button
-                            type="button"
-                            onClick={() => openOverride([r])}
-                            className="rounded-lg bg-accent px-3 py-2 text-sm font-semibold text-white transition hover:opacity-90"
-                          >
-                            Tasdiqlab o&apos;tkazish
-                          </button>
-                        )}
-                        {r.state === 'DEPT_SUBMITTED' && r.timesheet && (
-                          <Link
-                            href={`/attendance/timesheets/department/${r.timesheet.id}`}
-                            className="rounded-lg border border-stone-200 px-3 py-2 text-sm font-semibold text-stone-700 transition hover:border-stone-300"
-                          >
-                            Ko&apos;rib chiqish
-                          </Link>
-                        )}
-                      </div>
+
+                      {isExpanded && (
+                        <div className="border-t border-stone-200 p-4">
+                          {!r.timesheet && (
+                            <p className="mb-2 text-xs text-stone-500">
+                              Tabel hali yaratilmagan — turniket ma&apos;lumoti bo&apos;yicha joriy holat ko&apos;rsatilmoqda.
+                            </p>
+                          )}
+                          {previewErrors[key] ? (
+                            <p className="rounded-md bg-rose-50 px-3 py-2 text-sm text-rose-700">{previewErrors[key]}</p>
+                          ) : expandedRows === undefined ? (
+                            <p className="text-sm text-stone-400">Yuklanmoqda...</p>
+                          ) : expandedRows.length === 0 ? (
+                            <p className="text-sm text-stone-400">Bo&apos;limda faol xodim yo&apos;q.</p>
+                          ) : (
+                            <TimesheetGridTable
+                              rows={expandedRows}
+                              daysInMonth={new Date(r.year, r.month, 0).getDate()}
+                              isApproved={false}
+                            />
+                          )}
+                        </div>
+                      )}
                     </div>
                   );
                 })
