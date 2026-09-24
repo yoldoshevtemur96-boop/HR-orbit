@@ -394,8 +394,8 @@ export async function previewDepartmentSummary(auth: AuthContext, departmentId: 
 // Tabel katagini qo'lda o'zgartirish (1-8 soat + izoh):
 // - DEPARTMENT_HEAD — faqat o'z bo'limi, tabel hali yuborilmagan
 //   (DRAFT/DEPT_REJECTED) bo'lsa;
-// - HR/tabelchi — tashkilot tabelida, ya'ni bo'lim tabeli tasdiqlangan
-//   (DEPT_APPROVED) va hali konsolidatsiya qilinmagan bo'lsa.
+// - HR/tabelchi — tashkilot tabelida (Joriy va Tasdiqlangan), bo'lim
+//   tabeli hali konsolidatsiya qilinmagan bo'lsa.
 // O'zgartirish TimesheetCellEdit'da saqlanadi (qayta generatsiyada ham
 // qo'llanadi) va tabel snapshot'iga darhol yoziladi.
 export async function editTimesheetCell(
@@ -420,17 +420,19 @@ export async function editTimesheetCell(
       },
     },
   });
-  if (!timesheet) throw AppError.notFound('Bu oy uchun bo\'lim tabeli topilmadi');
-
   if (auth.role === 'DEPARTMENT_HEAD') {
+    if (!timesheet) throw AppError.notFound('Bu oy uchun bo\'lim tabeli topilmadi');
     const self = await getMyEmployee(auth);
     if (self.departmentId !== employee.departmentId) throw AppError.forbidden();
     if (timesheet.status !== 'DRAFT' && timesheet.status !== 'DEPT_REJECTED') {
       throw AppError.badRequest("Tabel yuborilgan — endi o'zgartirib bo'lmaydi");
     }
   } else if (canManageAttendance(auth.role)) {
-    if (timesheet.status !== 'DEPT_APPROVED') {
-      throw AppError.badRequest("Faqat tasdiqlangan va hali rahbariyatga yuborilmagan tabelni o'zgartirish mumkin");
+    // HR/tabelchi istalgan bosqichda (hatto tabel hali yaratilmagan
+    // bo'lsa ham) tahrirlay oladi — faqat rahbariyatga yuborilgan
+    // (konsolidatsiya qilingan) tabel yopiq.
+    if (timesheet?.status === 'CONSOLIDATED') {
+      throw AppError.badRequest("Tabel rahbariyatga yuborilgan — endi o'zgartirib bo'lmaydi");
     }
   } else {
     throw AppError.forbidden();
@@ -461,9 +463,13 @@ export async function editTimesheetCell(
     },
   });
 
+  // Tabel hali yaratilmagan bo'lsa — o'zgartirish saqlandi, tabel
+  // yig'ilganda (yoki preview'da) avtomatik qo'llanadi.
+  if (!timesheet) return null;
+
   const summaryData = timesheet.summaryData as unknown as EmployeeSummaryLine[];
   const line = summaryData.find((l) => l.employeeId === input.employeeId);
-  if (!line) throw AppError.badRequest('Xodim bu tabelda yo\'q');
+  if (!line) return timesheet;
   applyCellEdit(line, input.date.getUTCDate(), input.hours, input.comment);
 
   return prisma.departmentTimesheet.update({

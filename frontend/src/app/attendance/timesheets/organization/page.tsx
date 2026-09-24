@@ -265,14 +265,32 @@ export default function OrganizationTimesheetListPage() {
     }
   }
 
-  async function handleEditCell(employeeId: string, day: number, hours: number, comment: string) {
+  async function saveCellEdit(y: number, m: number, employeeId: string, day: number, hours: number, comment: string) {
     await api.put('/attendance/timesheets/cells', {
       employeeId,
-      date: `${periodLabel(year, month)}-${String(day).padStart(2, '0')}`,
+      date: `${periodLabel(y, m)}-${String(day).padStart(2, '0')}`,
       hours,
       comment,
     });
+  }
+
+  async function handleEditCell(employeeId: string, day: number, hours: number, comment: string) {
+    await saveCellEdit(year, month, employeeId, day, hours, comment);
     loadDeptTimesheets();
+  }
+
+  // Joriy tabdagi ochilgan bo'lim jadvalidan tahrirlash. Tabel hali
+  // yaratilmagan bo'lsa, o'zgartirish ko'rinishi uchun preview qayta olinadi.
+  async function handleIncomingEditCell(row: IncomingRow, employeeId: string, day: number, hours: number, comment: string) {
+    await saveCellEdit(row.year, row.month, employeeId, day, hours, comment);
+    if (row.timesheet) {
+      loadDeptTimesheets();
+      return;
+    }
+    const res = await api.get<EmployeeAttendanceSummaryLine[]>('/attendance/timesheets/department/preview', {
+      params: { departmentId: row.departmentId, year: row.year, month: row.month },
+    });
+    setPreviews((prev) => ({ ...prev, [rowKey(row)]: res.data }));
   }
 
   async function handleSendToLeadership() {
@@ -467,6 +485,7 @@ export default function OrganizationTimesheetListPage() {
                               rows={expandedRows}
                               daysInMonth={new Date(r.year, r.month, 0).getDate()}
                               isApproved={false}
+                              onEditCell={canManage ? (...args) => handleIncomingEditCell(r, ...args) : undefined}
                             />
                           )}
                         </div>
