@@ -394,7 +394,7 @@ export async function previewDepartmentSummary(auth: AuthContext, departmentId: 
 // Tabel katagini qo'lda o'zgartirish (1-8 soat + izoh):
 // - DEPARTMENT_HEAD — faqat o'z bo'limi, konsolidatsiyadan oldin istalgan
 //   bosqichda (yuborilgan/tasdiqlangan bo'lsa ham — u holda tabel
-//   qoralamaga qaytadi). HR tasdiqlab o'tkazgan tabel yopiq;
+//   qoralamaga qaytadi, HR tasdiqlab o'tkazgan bo'lsa ham);
 // - HR/tabelchi — tashkilot tabelida (Joriy va Tasdiqlangan), bo'lim
 //   tabeli hali konsolidatsiya qilinmagan bo'lsa.
 // O'zgartirish TimesheetCellEdit'da saqlanadi (qayta generatsiyada ham
@@ -427,9 +427,6 @@ export async function editTimesheetCell(
     if (self.departmentId !== employee.departmentId) throw AppError.forbidden();
     if (timesheet.status === 'CONSOLIDATED') {
       throw AppError.badRequest("Tabel rahbariyatga yuborilgan — endi o'zgartirib bo'lmaydi");
-    }
-    if (timesheet.hrOverride) {
-      throw AppError.badRequest("Bu tabelni HR tasdiqlab o'tkazgan — o'zgartirib bo'lmaydi");
     }
   } else if (canManageAttendance(auth.role)) {
     // HR/tabelchi istalgan bosqichda (hatto tabel hali yaratilmagan
@@ -485,7 +482,14 @@ export async function editTimesheetCell(
     where: { id: timesheet.id },
     data: {
       summaryData: summaryData as any,
-      ...(revertToDraft && { status: 'DRAFT', submittedAt: null, deptApprovedByUserId: null, deptApprovedAt: null }),
+      ...(revertToDraft && {
+        status: 'DRAFT',
+        submittedAt: null,
+        deptApprovedByUserId: null,
+        deptApprovedAt: null,
+        hrOverride: false,
+        hrOverrideReason: null,
+      }),
     },
   });
 }
@@ -542,6 +546,13 @@ export async function consolidateOrganizationTimesheet(auth: AuthContext, year: 
     throw AppError.badRequest("Tasdiqlangan departament tabeli topilmadi — avval bo'limlar tabelini tasdiqlashi kerak");
   }
 
+  const existingOrg = await prisma.organizationTimesheet.findUnique({
+    where: { organizationId_year_month: { organizationId: auth.organizationId, year, month } },
+  });
+  if (existingOrg && (existingOrg.status === 'SUBMITTED' || existingOrg.status === 'APPROVED')) {
+    throw AppError.badRequest('Bu oy tabeli allaqachon rahbariyatga yuborilgan');
+  }
+
   const orgTimesheet = await prisma.organizationTimesheet.upsert({
     where: { organizationId_year_month: { organizationId: auth.organizationId, year, month } },
     create: {
@@ -568,11 +579,9 @@ export async function consolidateOrganizationTimesheet(auth: AuthContext, year: 
     })),
   });
 
-  await prisma.departmentTimesheet.updateMany({
-    where: { id: { in: approvedDeptTimesheets.map((dt) => dt.id) } },
-    data: { status: 'CONSOLIDATED' },
-  });
-
+  // Bo'lim tabellari bu yerda qulflanmaydi — faqat rahbariyatga haqiqatan
+  // yuborilganda (submitOrganizationTimesheet) CONSOLIDATED bo'ladi.
+  // Aks holda yuborish bosqichi muvaffaqiyatsiz bo'lsa, ular qulfda qolardi.
   return getOrganizationTimesheetById(auth, orgTimesheet.id);
 }
 
@@ -584,10 +593,33 @@ export async function submitOrganizationTimesheet(auth: AuthContext, timesheetId
   if (timesheet.status !== 'DRAFT') {
     throw AppError.badRequest('Faqat qoralama holatidagi tabel yuborilishi mumkin');
   }
-  return prisma.organizationTimesheet.update({
-    where: { id: timesheetId },
-    data: { status: 'SUBMITTED', submittedAt: new Date() },
+
+  const lines = await prisma.organizationTimesheetLine.findMany({
+    where: { organizationTimesheetId: timesheetId },
+    select: { departmentTimesheetId: true },
   });
+  const deptTimesheetIds = lines.map((l) => l.departmentTimesheetId);
+
+  // Konsolidatsiyadan keyin bo'lim tabeli o'zgargan bo'lsa (masalan rahbar
+  // tahrirlab qoralamaga qaytargan), tabelni qayta yig'ish kerak.
+  const notApproved = await prisma.departmentTimesheet.count({
+    where: { id: { in: deptTimesheetIds }, status: { not: 'DEPT_APPROVED' } },
+  });
+  if (notApproved > 0) {
+    throw AppError.badRequest("Bo'lim tabellari o'zgargan — tabelni qayta yig'ib yuboring");
+  }
+
+  const [updated] = await prisma.$transaction([
+    prisma.organizationTimesheet.update({
+      where: { id: timesheetId },
+      data: { status: 'SUBMITTED', submittedAt: new Date() },
+    }),
+    prisma.departmentTimesheet.updateMany({
+      where: { id: { in: deptTimesheetIds } },
+      data: { status: 'CONSOLIDATED' },
+    }),
+  ]);
+  return updated;
 }
 
 // FINAL tasdiqlash — faqat SUPER_ADMIN. Tasdiqlangandan keyingi
@@ -609,10 +641,23 @@ export async function decideOrganizationTimesheet(
   }
 
   if (decision === 'REJECTED') {
-    return prisma.organizationTimesheet.update({
-      where: { id: timesheetId },
-      data: { status: 'REJECTED', rejectionComment },
+    // Rad etilgan tabelning bo'lim tabellari qulfdan chiqadi — tasdiqlangan
+    // holatga qaytadi, rahbar/HR tuzatib qayta yuborishi mumkin.
+    const lines = await prisma.organizationTimesheetLine.findMany({
+      where: { organizationTimesheetId: timesheetId },
+      select: { departmentTimesheetId: true },
     });
+    const [updated] = await prisma.$transaction([
+      prisma.organizationTimesheet.update({
+        where: { id: timesheetId },
+        data: { status: 'REJECTED', rejectionComment },
+      }),
+      prisma.departmentTimesheet.updateMany({
+        where: { id: { in: lines.map((l) => l.departmentTimesheetId) }, status: 'CONSOLIDATED' },
+        data: { status: 'DEPT_APPROVED' },
+      }),
+    ]);
+    return updated;
   }
 
   return prisma.organizationTimesheet.update({

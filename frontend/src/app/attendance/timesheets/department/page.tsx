@@ -106,7 +106,7 @@ export default function DepartmentTimesheetListPage() {
     // Rahbariyatga yuborilgunga qadar tahrirlash mumkin. Yuborilgan yoki
     // tasdiqlangan tabel o'zgartirilsa, backend uni qoralamaga qaytaradi —
     // shunda "HR'ga yuborish" tugmasi yana chiqadi.
-    const isEditable = Boolean(currentTimesheet) && currentTimesheet.status !== 'CONSOLIDATED' && !currentTimesheet.hrOverride;
+    const isEditable = Boolean(currentTimesheet) && currentTimesheet.status !== 'CONSOLIDATED';
     const isSentToHr = currentTimesheet?.status === 'DEPT_SUBMITTED' || currentTimesheet?.status === 'DEPT_APPROVED';
 
     async function handleEditCell(employeeId: string, day: number, hours: number, comment: string) {
@@ -204,6 +204,11 @@ export default function DepartmentTimesheetListPage() {
             )}
             {error && <p className="rounded-md bg-rose-50 px-3 py-2 text-sm text-rose-700">{error}</p>}
 
+            {currentTimesheet.status === 'CONSOLIDATED' && (
+              <p className="rounded-md bg-stone-100 px-3 py-2 text-sm text-stone-600">
+                Tabel rahbariyatga yuborilgan — endi o&apos;zgartirib bo&apos;lmaydi.
+              </p>
+            )}
             {isEditable && isSentToHr && (
               <p className="rounded-md bg-sky-50 px-3 py-2 text-sm text-sky-800">
                 Tabel HR&apos;ga yuborilgan
