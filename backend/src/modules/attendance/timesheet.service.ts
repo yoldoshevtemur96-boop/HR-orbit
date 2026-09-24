@@ -291,6 +291,58 @@ export async function decideDepartmentTimesheet(
   });
 }
 
+// HR departament rahbari yubormagan (yoki umuman yaratilmagan) bo'lim
+// tabelini o'zi tasdiqlab o'tkazadi — sabab majburiy. Tabel turniket
+// ma'lumotidan yangidan yig'iladi. Rahbar allaqachon yuborgan tabel
+// (DEPT_SUBMITTED) oddiy decide oqimi orqali tasdiqlanadi.
+export async function hrApproveDepartmentTimesheet(
+  auth: AuthContext,
+  input: { departmentId: string; year: number; month: number; reason: string },
+) {
+  if (!canManageAttendance(auth.role)) {
+    throw AppError.forbidden();
+  }
+
+  const department = await prisma.department.findFirst({
+    where: { id: input.departmentId, organizationId: auth.organizationId },
+  });
+  if (!department) throw AppError.notFound("Bo'lim topilmadi");
+
+  const key = {
+    organizationId: auth.organizationId,
+    departmentId: input.departmentId,
+    year: input.year,
+    month: input.month,
+  };
+  const existing = await prisma.departmentTimesheet.findUnique({ where: { organizationId_departmentId_year_month: key } });
+  if (existing && existing.status !== 'DRAFT' && existing.status !== 'DEPT_REJECTED') {
+    throw AppError.badRequest(
+      existing.status === 'DEPT_SUBMITTED'
+        ? "Rahbar bu tabelni yuborgan — uni oddiy tartibda tasdiqlang"
+        : 'Bu tabel allaqachon tasdiqlangan',
+    );
+  }
+
+  const summaryData = await buildDepartmentSummary(auth.organizationId, input.departmentId, input.year, input.month);
+  const now = new Date();
+  const approvedData = {
+    status: 'DEPT_APPROVED' as const,
+    summaryData: summaryData as any,
+    generatedByUserId: auth.userId,
+    deptApprovedByUserId: auth.userId,
+    deptApprovedAt: now,
+    rejectionComment: null,
+    hrOverride: true,
+    hrOverrideReason: input.reason,
+  };
+
+  return prisma.departmentTimesheet.upsert({
+    where: { organizationId_departmentId_year_month: key },
+    create: { ...key, ...approvedData },
+    update: approvedData,
+  });
+}
+
 export async function listDepartmentTimesheets(auth: AuthContext, year?: number) {
   const where: any = { organizationId: auth.organizationId };
   if (year) where.year = year;

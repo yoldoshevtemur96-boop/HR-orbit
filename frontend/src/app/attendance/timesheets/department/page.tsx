@@ -2,6 +2,7 @@
 
 import { useCallback, useEffect, useState } from 'react';
 import Link from 'next/link';
+import { useRouter } from 'next/navigation';
 import { api } from '@/lib/api';
 import { DepartmentTimesheetCard } from '@/components/attendance/DepartmentTimesheetCard';
 import { TimesheetStatusBadge } from '@/components/attendance/TimesheetStatusBadge';
@@ -21,6 +22,14 @@ export default function DepartmentTimesheetListPage() {
   const user = useAuthStore((s) => s.user);
   const canGenerate = user ? MANAGE_ROLES.includes(user.role) : false;
   const isDeptHead = user?.role === 'DEPARTMENT_HEAD';
+  const router = useRouter();
+
+  // HR va tabelchi bo'lim tabellari bilan faqat Tashkilot tabeli
+  // sahifasi orqali ishlaydi — bu sahifa ular uchun yopiq.
+  const isHiddenForRole = user?.role === 'HR_MANAGER' || user?.role === 'TIMEKEEPER';
+  useEffect(() => {
+    if (isHiddenForRole) router.replace('/attendance/timesheets/organization');
+  }, [isHiddenForRole, router]);
 
   const [timesheets, setTimesheets] = useState<DepartmentTimesheet[] | null>(null);
   const [departments, setDepartments] = useState<Department[]>([]);
@@ -84,6 +93,8 @@ export default function DepartmentTimesheetListPage() {
       setIsGenerating(false);
     }
   }
+
+  if (isHiddenForRole) return null;
 
   if (isDeptHead) {
     const [currentTimesheet, ...pastTimesheets] = timesheets ?? [];
@@ -164,6 +175,11 @@ export default function DepartmentTimesheetListPage() {
               <TimesheetStatusBadge status={currentTimesheet.status} />
             </div>
 
+            {currentTimesheet.hrOverride && (
+              <p className="rounded-md bg-amber-50 px-3 py-2 text-sm text-amber-800">
+                Bu tabel HR tomonidan tasdiqlangan. Sabab: {currentTimesheet.hrOverrideReason ?? '—'}
+              </p>
+            )}
             {currentTimesheet.rejectionComment && (
               <p className="rounded-md bg-rose-50 px-3 py-2 text-sm text-rose-700">
                 Rad etish sababi: {currentTimesheet.rejectionComment}

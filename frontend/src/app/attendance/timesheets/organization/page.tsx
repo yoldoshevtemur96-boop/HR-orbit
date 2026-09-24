@@ -5,6 +5,7 @@ import Link from 'next/link';
 import { api } from '@/lib/api';
 import { TimesheetStatusBadge } from '@/components/attendance/TimesheetStatusBadge';
 import { TimesheetGridTable } from '@/components/attendance/TimesheetGridTable';
+import { Modal } from '@/components/hr/Modal';
 import { useAuthStore } from '@/store/authStore';
 import type { DepartmentTimesheet, OrganizationTimesheet } from '@/types/attendance';
 import type { Department } from '@/types/core-hr';
@@ -27,6 +28,37 @@ const MONTH_NAMES = [
 const FIELD_CLASS =
   'rounded-lg border border-stone-200 bg-white px-3 py-2 text-sm outline-none focus:border-accent focus:ring-2 focus:ring-accent/15';
 
+// "Joriy" tabidagi bo'lim holati — tabel umuman yaratilmagan bo'lishi
+// ham mumkin (departament rahbari sahifasini hali ochmagan).
+type IncomingState = 'MISSING' | 'DRAFT' | 'DEPT_REJECTED' | 'DEPT_SUBMITTED';
+
+const INCOMING_STATE_LABEL: Record<IncomingState, string> = {
+  MISSING: 'Yaratilmagan',
+  DRAFT: 'Yubormagan',
+  DEPT_REJECTED: 'Rad etilgan',
+  DEPT_SUBMITTED: 'Tasdiq kutmoqda',
+};
+
+const INCOMING_STATE_STYLE: Record<IncomingState, string> = {
+  MISSING: 'bg-stone-100 text-stone-500',
+  DRAFT: 'bg-stone-100 text-stone-600',
+  DEPT_REJECTED: 'bg-rose-50 text-rose-700',
+  DEPT_SUBMITTED: 'bg-amber-50 text-amber-700',
+};
+
+interface IncomingRow {
+  departmentId: string;
+  year: number;
+  month: number;
+  state: IncomingState;
+  timesheet: DepartmentTimesheet | null;
+}
+
+// HR tasdiqlab o'tkazish oynasi — bitta bo'lim yoki bir nechtasi uchun.
+interface OverrideTarget {
+  rows: IncomingRow[];
+}
+
 function currentYearMonth() {
   const d = new Date();
   return { year: d.getFullYear(), month: d.getMonth() + 1 };
@@ -34,6 +66,10 @@ function currentYearMonth() {
 
 function periodLabel(y: number, m: number) {
   return `${y}-${String(m).padStart(2, '0')}`;
+}
+
+function canOverride(row: IncomingRow) {
+  return row.state !== 'DEPT_SUBMITTED';
 }
 
 function FilterBar({ children, onReset, showReset }: { children: React.ReactNode; onReset: () => void; showReset: boolean }) {
@@ -70,9 +106,14 @@ export default function OrganizationTimesheetListPage() {
   const [isSubmitting, setIsSubmitting] = useState(false);
   const [error, setError] = useState<string | null>(null);
 
+  const [overrideTarget, setOverrideTarget] = useState<OverrideTarget | null>(null);
+  const [overrideReason, setOverrideReason] = useState('');
+  const [overrideError, setOverrideError] = useState<string | null>(null);
+  const [isOverriding, setIsOverriding] = useState(false);
+
   // Joriy tab filtrlari
   const [incomingDept, setIncomingDept] = useState('');
-  const [incomingPeriod, setIncomingPeriod] = useState('');
+  const [incomingState, setIncomingState] = useState<'' | IncomingState>('');
   // Tasdiqlangan tab filtrlari
   const [approvedDept, setApprovedDept] = useState('');
   const [approvedSearch, setApprovedSearch] = useState('');
@@ -95,17 +136,36 @@ export default function OrganizationTimesheetListPage() {
   }, [loadDeptTimesheets, loadOrgTimesheets]);
 
   const departmentNameById = new Map(departments.map((d) => [d.id, d.name]));
+  const activeDepartments = departments.filter((d) => d.status === 'ACTIVE');
 
-  const incoming = (deptTimesheets ?? []).filter((t) => t.status === 'DEPT_SUBMITTED');
-  const approved = (deptTimesheets ?? []).filter((t) => t.status === 'DEPT_APPROVED' && t.year === year && t.month === month);
+  const currentMonthSheets = (deptTimesheets ?? []).filter((t) => t.year === year && t.month === month);
+  const currentSheetByDept = new Map(currentMonthSheets.map((t) => [t.departmentId, t]));
+
+  // Joriy oy: hali tasdiqlanmagan har bir faol bo'lim. Oldingi oylardan
+  // qolib ketgan, tasdiq kutayotgan tabellar ham ro'yxat oxiriga qo'shiladi.
+  const incomingRows: IncomingRow[] = [
+    ...activeDepartments.flatMap((d): IncomingRow[] => {
+      const t = currentSheetByDept.get(d.id);
+      if (!t) return [{ departmentId: d.id, year, month, state: 'MISSING', timesheet: null }];
+      if (t.status === 'DEPT_APPROVED' || t.status === 'CONSOLIDATED') return [];
+      return [{ departmentId: d.id, year, month, state: t.status, timesheet: t }];
+    }),
+    ...(deptTimesheets ?? [])
+      .filter((t) => t.status === 'DEPT_SUBMITTED' && !(t.year === year && t.month === month))
+      .map((t): IncomingRow => ({ departmentId: t.departmentId, year: t.year, month: t.month, state: 'DEPT_SUBMITTED', timesheet: t })),
+  ];
+
+  const filteredIncoming = incomingRows.filter(
+    (r) => (!incomingDept || r.departmentId === incomingDept) && (!incomingState || r.state === incomingState),
+  );
+  const overridableFiltered = filteredIncoming.filter(canOverride);
+
+  const approved = currentMonthSheets.filter((t) => t.status === 'DEPT_APPROVED');
   const archive = (orgTimesheets ?? []).filter((t) => t.status === 'APPROVED');
 
-  const incomingPeriods = Array.from(new Set(incoming.map((t) => periodLabel(t.year, t.month)))).sort().reverse();
-  const filteredIncoming = incoming.filter(
-    (t) =>
-      (!incomingDept || t.departmentId === incomingDept) &&
-      (!incomingPeriod || periodLabel(t.year, t.month) === incomingPeriod),
-  );
+  const submittedCount = incomingRows.filter((r) => r.state === 'DEPT_SUBMITTED' && r.year === year && r.month === month).length;
+  const notSubmittedCount = incomingRows.filter(canOverride).length;
+  const missingFromApproved = activeDepartments.filter((d) => currentSheetByDept.get(d.id)?.status !== 'DEPT_APPROVED');
 
   const search = approvedSearch.trim().toLowerCase();
   const combinedRows = approved
@@ -124,13 +184,63 @@ export default function OrganizationTimesheetListPage() {
     .filter((t) => (!archiveYear || t.year === Number(archiveYear)) && (!archiveMonth || t.month === Number(archiveMonth)))
     .sort((a, b) => b.year - a.year || b.month - a.month);
 
+  const isDeptDataLoading = deptTimesheets === null;
   const tabCounts: Record<TabKey, number | null> = {
-    incoming: deptTimesheets === null ? null : incoming.length,
-    approved: deptTimesheets === null ? null : approved.length,
+    incoming: isDeptDataLoading ? null : incomingRows.length,
+    approved: isDeptDataLoading ? null : approved.length,
     archive: orgTimesheets === null ? null : archive.length,
   };
 
+  function openOverride(rows: IncomingRow[]) {
+    setOverrideTarget({ rows });
+    setOverrideReason('');
+    setOverrideError(null);
+  }
+
+  async function handleOverride(e: React.FormEvent) {
+    e.preventDefault();
+    if (!overrideTarget) return;
+    const reason = overrideReason.trim();
+    if (!reason) {
+      setOverrideError('Sabab majburiy');
+      return;
+    }
+    setOverrideError(null);
+    setIsOverriding(true);
+    const failed: string[] = [];
+    const failedRows: IncomingRow[] = [];
+    for (const row of overrideTarget.rows) {
+      try {
+        await api.post('/attendance/timesheets/department/hr-approve', {
+          departmentId: row.departmentId,
+          year: row.year,
+          month: row.month,
+          reason,
+        });
+      } catch (err: any) {
+        const name = departmentNameById.get(row.departmentId) ?? row.departmentId;
+        failed.push(`${name}: ${err?.response?.data?.error?.message ?? 'xatolik'}`);
+        failedRows.push(row);
+      }
+    }
+    setIsOverriding(false);
+    loadDeptTimesheets();
+    if (failedRows.length > 0) {
+      setOverrideTarget({ rows: failedRows });
+      setOverrideError(failed.join('\n'));
+    } else {
+      setOverrideTarget(null);
+    }
+  }
+
   async function handleSendToLeadership() {
+    if (missingFromApproved.length > 0) {
+      const names = missingFromApproved.map((d) => d.name).join(', ');
+      const ok = window.confirm(
+        `${missingFromApproved.length} ta bo'lim tabelga kirmaydi (tasdiqlanmagan): ${names}.\n\nBaribir rahbariyatga yuborilsinmi?`,
+      );
+      if (!ok) return;
+    }
     setError(null);
     setIsSubmitting(true);
     try {
@@ -187,58 +297,111 @@ export default function OrganizationTimesheetListPage() {
       <section className="flex min-h-[60vh] flex-col gap-4 rounded-xl border border-stone-200 bg-stone-50/50 p-5">
         {tab === 'incoming' && (
           <>
+            {!isDeptDataLoading && (
+              <p className="text-sm text-stone-500">
+                {periodLabel(year, month)} · jami {activeDepartments.length} bo&apos;lim:{' '}
+                <span className="font-medium text-emerald-700">{approved.length} tasdiqlangan</span>,{' '}
+                <span className="font-medium text-amber-700">{submittedCount} tasdiq kutmoqda</span>,{' '}
+                <span className="font-medium text-stone-700">{notSubmittedCount} yubormagan</span>
+              </p>
+            )}
+
             <FilterBar
-              showReset={Boolean(incomingDept || incomingPeriod)}
+              showReset={Boolean(incomingDept || incomingState)}
               onReset={() => {
                 setIncomingDept('');
-                setIncomingPeriod('');
+                setIncomingState('');
               }}
             >
               <FilterField label="Bo'lim">
                 <select value={incomingDept} onChange={(e) => setIncomingDept(e.target.value)} className={FIELD_CLASS}>
                   <option value="">Barchasi</option>
-                  {departments.map((d) => (
+                  {activeDepartments.map((d) => (
                     <option key={d.id} value={d.id}>
                       {d.name}
                     </option>
                   ))}
                 </select>
               </FilterField>
-              <FilterField label="Davr">
-                <select value={incomingPeriod} onChange={(e) => setIncomingPeriod(e.target.value)} className={FIELD_CLASS}>
+              <FilterField label="Holat">
+                <select
+                  value={incomingState}
+                  onChange={(e) => setIncomingState(e.target.value as '' | IncomingState)}
+                  className={FIELD_CLASS}
+                >
                   <option value="">Barchasi</option>
-                  {incomingPeriods.map((p) => (
-                    <option key={p} value={p}>
-                      {p}
+                  {(Object.keys(INCOMING_STATE_LABEL) as IncomingState[]).map((s) => (
+                    <option key={s} value={s}>
+                      {INCOMING_STATE_LABEL[s]}
                     </option>
                   ))}
                 </select>
               </FilterField>
+              {canManage && overridableFiltered.length > 1 && (
+                <button
+                  type="button"
+                  onClick={() => openOverride(overridableFiltered)}
+                  className="ml-auto rounded-lg border border-accent px-4 py-2 text-sm font-semibold text-accent transition hover:bg-accent/5"
+                >
+                  Barchasini tasdiqlash ({overridableFiltered.length})
+                </button>
+              )}
             </FilterBar>
 
             <div className="flex flex-col gap-2">
-              {deptTimesheets === null ? (
+              {isDeptDataLoading ? (
                 <p className="text-sm text-stone-400">Yuklanmoqda...</p>
               ) : filteredIncoming.length === 0 ? (
-                <p className="text-sm text-stone-400">Tasdiqlash kutayotgan bo&apos;lim tabeli yo&apos;q.</p>
+                <p className="text-sm text-stone-400">Tasdiqlanmagan bo&apos;lim tabeli yo&apos;q.</p>
               ) : (
-                filteredIncoming.map((t) => (
-                  <Link
-                    key={t.id}
-                    href={`/attendance/timesheets/department/${t.id}`}
-                    className="flex items-center justify-between rounded-lg border border-stone-200 bg-white px-5 py-4 transition hover:border-stone-300"
-                  >
-                    <div>
-                      <p className="text-base font-semibold text-stone-800">
-                        {departmentNameById.get(t.departmentId) ?? t.departmentId}
-                      </p>
-                      <p className="text-sm text-stone-400">
-                        {periodLabel(t.year, t.month)} · {t.summaryData.length} xodim
-                      </p>
+                filteredIncoming.map((r) => {
+                  const name = departmentNameById.get(r.departmentId) ?? r.departmentId;
+                  return (
+                    <div
+                      key={`${r.departmentId}-${r.year}-${r.month}`}
+                      className="flex flex-wrap items-center justify-between gap-3 rounded-lg border border-stone-200 bg-white px-5 py-4"
+                    >
+                      <div>
+                        {r.timesheet ? (
+                          <Link
+                            href={`/attendance/timesheets/department/${r.timesheet.id}`}
+                            className="text-base font-semibold text-stone-800 hover:text-accent"
+                          >
+                            {name}
+                          </Link>
+                        ) : (
+                          <p className="text-base font-semibold text-stone-800">{name}</p>
+                        )}
+                        <p className="text-sm text-stone-400">
+                          {periodLabel(r.year, r.month)}
+                          {r.timesheet ? ` · ${r.timesheet.summaryData.length} xodim` : ' · rahbar tabelni hali ochmagan'}
+                        </p>
+                      </div>
+                      <div className="flex items-center gap-3">
+                        <span className={`rounded-full px-2.5 py-1 text-xs font-medium ${INCOMING_STATE_STYLE[r.state]}`}>
+                          {INCOMING_STATE_LABEL[r.state]}
+                        </span>
+                        {canManage && canOverride(r) && (
+                          <button
+                            type="button"
+                            onClick={() => openOverride([r])}
+                            className="rounded-lg bg-accent px-3 py-2 text-sm font-semibold text-white transition hover:opacity-90"
+                          >
+                            Tasdiqlab o&apos;tkazish
+                          </button>
+                        )}
+                        {r.state === 'DEPT_SUBMITTED' && r.timesheet && (
+                          <Link
+                            href={`/attendance/timesheets/department/${r.timesheet.id}`}
+                            className="rounded-lg border border-stone-200 px-3 py-2 text-sm font-semibold text-stone-700 transition hover:border-stone-300"
+                          >
+                            Ko&apos;rib chiqish
+                          </Link>
+                        )}
+                      </div>
                     </div>
-                    <TimesheetStatusBadge status={t.status} />
-                  </Link>
-                ))
+                  );
+                })
               )}
             </div>
           </>
@@ -247,15 +410,28 @@ export default function OrganizationTimesheetListPage() {
         {tab === 'approved' && (
           <>
             <p className="text-sm text-stone-500">
-              {periodLabel(year, month)} · departament rahbarlari tomonidan tasdiqlangan bo&apos;lim tabellari
+              {periodLabel(year, month)} · tasdiqlangan bo&apos;lim tabellari
             </p>
 
-            {deptTimesheets === null ? (
+            {isDeptDataLoading ? (
               <p className="text-sm text-stone-400">Yuklanmoqda...</p>
             ) : approved.length === 0 ? (
               <p className="text-sm text-stone-400">Hali tasdiqlangan bo&apos;lim tabeli yo&apos;q.</p>
             ) : (
               <>
+                <div className="flex flex-wrap gap-2">
+                  {approved.map((t) => (
+                    <span
+                      key={t.id}
+                      title={t.hrOverride ? `HR tasdiqlab o'tkazgan. Sabab: ${t.hrOverrideReason ?? '—'}` : undefined}
+                      className="rounded-full border border-stone-200 bg-white px-3 py-1 text-xs font-medium text-stone-600"
+                    >
+                      {departmentNameById.get(t.departmentId) ?? t.departmentId} · {t.summaryData.length} xodim
+                      {t.hrOverride && <span className="ml-1.5 rounded bg-amber-50 px-1.5 text-amber-700">HR</span>}
+                    </span>
+                  ))}
+                </div>
+
                 <FilterBar
                   showReset={Boolean(approvedDept || approvedSearch)}
                   onReset={() => {
@@ -268,7 +444,7 @@ export default function OrganizationTimesheetListPage() {
                       <option value="">Barchasi</option>
                       {approved.map((t) => (
                         <option key={t.id} value={t.departmentId}>
-                          {departmentNameById.get(t.departmentId) ?? t.departmentId} · {t.summaryData.length} xodim
+                          {departmentNameById.get(t.departmentId) ?? t.departmentId}
                         </option>
                       ))}
                     </select>
@@ -302,6 +478,11 @@ export default function OrganizationTimesheetListPage() {
                     >
                       {isSubmitting ? 'Yuborilmoqda...' : 'Rahbariyatga tasdiqlatish'}
                     </button>
+                    {missingFromApproved.length > 0 && (
+                      <p className="text-xs text-amber-700">
+                        {missingFromApproved.length} ta bo&apos;lim hali tasdiqlanmagan — ular tabelga kirmaydi.
+                      </p>
+                    )}
                     {(approvedDept || approvedSearch) && (
                       <p className="text-xs text-stone-400">
                         Filtrdan qat&apos;i nazar barcha tasdiqlangan bo&apos;limlar yuboriladi.
@@ -371,6 +552,55 @@ export default function OrganizationTimesheetListPage() {
           </>
         )}
       </section>
+
+      <Modal
+        isOpen={overrideTarget !== null}
+        title="Tasdiqlab o'tkazish"
+        onClose={() => !isOverriding && setOverrideTarget(null)}
+      >
+        {overrideTarget && (
+          <form onSubmit={handleOverride} className="flex flex-col gap-3">
+            <p className="text-sm text-stone-600">
+              {overrideTarget.rows.length === 1
+                ? `${departmentNameById.get(overrideTarget.rows[0].departmentId) ?? ''} bo'limi tabeli`
+                : `${overrideTarget.rows.length} ta bo'lim tabeli`}{' '}
+              departament rahbari yubormasdan turib tasdiqlanadi. Tabel turniket ma&apos;lumotidan yangidan yig&apos;iladi va rahbar
+              uni endi o&apos;zgartira olmaydi.
+            </p>
+            <div>
+              <label className="mb-1 block text-xs font-medium text-stone-500">Sabab (majburiy)</label>
+              <textarea
+                value={overrideReason}
+                onChange={(e) => setOverrideReason(e.target.value)}
+                rows={3}
+                placeholder="Masalan: rahbar ta'tilda, muddat o'tdi"
+                className={`${FIELD_CLASS} w-full`}
+                autoFocus
+              />
+            </div>
+            {overrideError && (
+              <p className="whitespace-pre-line rounded-md bg-rose-50 px-3 py-2 text-sm text-rose-700">{overrideError}</p>
+            )}
+            <div className="flex justify-end gap-2">
+              <button
+                type="button"
+                disabled={isOverriding}
+                onClick={() => setOverrideTarget(null)}
+                className="rounded-lg border border-stone-200 px-4 py-2 text-sm font-medium text-stone-600 hover:bg-stone-50"
+              >
+                Bekor qilish
+              </button>
+              <button
+                type="submit"
+                disabled={isOverriding || !overrideReason.trim()}
+                className="rounded-lg bg-accent px-4 py-2 text-sm font-semibold text-white transition hover:opacity-90 disabled:opacity-50"
+              >
+                {isOverriding ? 'Tasdiqlanmoqda...' : 'Tasdiqlash'}
+              </button>
+            </div>
+          </form>
+        )}
+      </Modal>
     </div>
   );
 }

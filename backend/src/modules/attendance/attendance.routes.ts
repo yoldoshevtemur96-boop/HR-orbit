@@ -186,6 +186,23 @@ attendanceRouter.post(
   },
 );
 
+const hrApproveSchema = z.object({
+  departmentId: z.string().min(1),
+  year: z.coerce.number().int(),
+  month: z.coerce.number().int().min(1).max(12),
+  reason: z.string().trim().min(1, 'Sabab majburiy'),
+});
+
+attendanceRouter.post(
+  '/timesheets/department/hr-approve',
+  requireRole('SUPER_ADMIN', 'HR_MANAGER', 'TIMEKEEPER'),
+  async (req, res) => {
+    const input = hrApproveSchema.parse(req.body);
+    const timesheet = await timesheetService.hrApproveDepartmentTimesheet(req.auth!, input);
+    res.json(timesheet);
+  },
+);
+
 attendanceRouter.get('/timesheets/department', async (req, res) => {
   if (!canViewDepartmentAttendance(req.auth!.role)) {
     throw AppError.forbidden();

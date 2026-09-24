@@ -78,6 +78,11 @@ export default function DepartmentTimesheetDetailPage() {
         <TimesheetStatusBadge status={timesheet.status} />
       </div>
 
+      {timesheet.hrOverride && (
+        <p className="rounded-md bg-amber-50 px-3 py-2 text-sm text-amber-800">
+          Rahbar yubormasdan HR tomonidan tasdiqlangan. Sabab: {timesheet.hrOverrideReason ?? '—'}
+        </p>
+      )}
       {timesheet.rejectionComment && (
         <p className="rounded-md bg-rose-50 px-3 py-2 text-sm text-rose-700">Rad etish sababi: {timesheet.rejectionComment}</p>
       )}

@@ -700,6 +700,9 @@ model DepartmentTimesheet {
   deptApprovedAt       DateTime?
   rejectionComment     String?
   generatedByUserId    String
+  // HR departament rahbari yubormasdan turib o'zi tasdiqlab o'tkazgan bo'lsa
+  hrOverride           Boolean                   @default(false)
+  hrOverrideReason     String?
   createdAt            DateTime                  @default(now())
   updatedAt            DateTime                  @updatedAt
 

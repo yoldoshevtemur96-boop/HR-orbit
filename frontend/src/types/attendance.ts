@@ -110,6 +110,8 @@ export interface DepartmentTimesheet {
   deptApprovedAt: string | null;
   rejectionComment: string | null;
   generatedByUserId: string;
+  hrOverride: boolean;
+  hrOverrideReason: string | null;
 }
 
 export interface MonthlyStatisticsRow {
