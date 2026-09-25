@@ -23,6 +23,7 @@ const NAV_ITEMS: NavItem[] = [
   { label: 'Attendance', href: '/attendance' },
   { label: 'Leave', href: '/workflow' },
   { label: 'Recruitment + Onboarding', href: '/recruitment' },
+  { label: 'Learning & Development', href: '/learning' },
   { label: 'HR Analytics', href: '/analytics' },
 ];
 
@@ -44,6 +45,9 @@ const ICONS: Record<string, JSX.Element> = {
   ),
   'Recruitment + Onboarding': (
     <path d="M9 11a4 4 0 1 0 0-8 4 4 0 0 0 0 8Zm-6 9a6 6 0 0 1 6-6h0a6 6 0 0 1 6 6M17 8v6M20 11h-6" />
+  ),
+  'Learning & Development': (
+    <path d="M3 8l9-4 9 4-9 4-9-4Zm4 2v5c0 1.5 2.2 3 5 3s5-1.5 5-3v-5M21 8v6" />
   ),
   'HR Analytics': (
     <path d="M4 19h16M7 16V9M12 16V5M17 16v-7" />

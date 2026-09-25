@@ -3,6 +3,7 @@
 // va "Mehnat ta'tiliga chiqish arizasi" shablonining to'liq zanjiri.
 import bcrypt from 'bcryptjs';
 import { PrismaClient } from '@prisma/client';
+import { seedLearning } from './seed-learning';
 
 const prisma = new PrismaClient();
 
@@ -867,6 +868,8 @@ async function main() {
     otherHrRequestTemplate,
   ].forEach((t) => console.log('  -', t.name, '(id:', t.id + ')'));
   console.log('---------------------------------------------');
+
+  await seedLearning(prisma, org.id);
 }
 
 main()

@@ -23,26 +23,34 @@ model Organization {
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt
 
-  users             User[]
-  departments       Department[]
-  branches          Branch[]
-  positions         Position[]
-  employees         Employee[]
-  employmentRecords EmploymentRecord[]
-  employeeEducations EmployeeEducation[]
-  employeeDocuments EmployeeDocument[]
-  workflowTemplates WorkflowTemplate[]
-  workflowInstances WorkflowInstance[]
-  auditLogs         AuditLog[]
-  vacancies         Vacancy[]
-  candidates        Candidate[]
-  notifications     Notification[]
-  attendanceRecords AttendanceRecord[]
-  attendanceCorrections AttendanceCorrection[]
-  timesheetCellEdits    TimesheetCellEdit[]
-  departmentTimesheets DepartmentTimesheet[]
-  organizationTimesheets OrganizationTimesheet[]
-  attendanceSettings AttendanceSettings?
+  users                      User[]
+  departments                Department[]
+  branches                   Branch[]
+  positions                  Position[]
+  employees                  Employee[]
+  employmentRecords          EmploymentRecord[]
+  employeeEducations         EmployeeEducation[]
+  employeeDocuments          EmployeeDocument[]
+  workflowTemplates          WorkflowTemplate[]
+  workflowInstances          WorkflowInstance[]
+  auditLogs                  AuditLog[]
+  vacancies                  Vacancy[]
+  candidates                 Candidate[]
+  notifications              Notification[]
+  attendanceRecords          AttendanceRecord[]
+  attendanceCorrections      AttendanceCorrection[]
+  timesheetCellEdits         TimesheetCellEdit[]
+  departmentTimesheets       DepartmentTimesheet[]
+  organizationTimesheets     OrganizationTimesheet[]
+  attendanceSettings         AttendanceSettings?
+  learningMaterials          LearningMaterial[]
+  learningProgress           LearningProgress[]
+  learningFavorites          LearningFavorite[]
+  learningAssignments        LearningAssignment[]
+  learningEvents             LearningEvent[]
+  learningEventRegistrations LearningEventRegistration[]
+  learningRequests           LearningRequest[]
+  developmentGoals           DevelopmentGoal[]
 
   @@map("organizations")
 }
@@ -107,12 +115,12 @@ model Department {
   createdAt      DateTime      @default(now())
   updatedAt      DateTime      @updatedAt
 
-  organization Organization @relation(fields: [organizationId], references: [id], onDelete: Cascade)
-  parent       Department?  @relation("DeptHierarchy", fields: [parentId], references: [id])
-  children     Department[] @relation("DeptHierarchy")
-  employees    Employee[]   @relation("DeptEmployees")
-  headEmployee Employee?    @relation("DeptHead", fields: [headEmployeeId], references: [id])
-  positions    Position[]
+  organization      Organization       @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+  parent            Department?        @relation("DeptHierarchy", fields: [parentId], references: [id])
+  children          Department[]       @relation("DeptHierarchy")
+  employees         Employee[]         @relation("DeptEmployees")
+  headEmployee      Employee?          @relation("DeptHead", fields: [headEmployeeId], references: [id])
+  positions         Position[]
   employmentRecords EmploymentRecord[]
 
   @@unique([organizationId, code])
@@ -133,10 +141,10 @@ model Branch {
   createdAt      DateTime      @default(now())
   updatedAt      DateTime      @updatedAt
 
-  organization Organization @relation(fields: [organizationId], references: [id], onDelete: Cascade)
-  manager      Employee?    @relation("BranchManager", fields: [managerId], references: [id])
-  employees    Employee[]   @relation("BranchEmployees")
-  positions    Position[]
+  organization      Organization       @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+  manager           Employee?          @relation("BranchManager", fields: [managerId], references: [id])
+  employees         Employee[]         @relation("BranchEmployees")
+  positions         Position[]
   employmentRecords EmploymentRecord[]
 
   @@unique([organizationId, code])
@@ -158,10 +166,10 @@ model Position {
   createdAt         DateTime      @default(now())
   updatedAt         DateTime      @updatedAt
 
-  organization Organization @relation(fields: [organizationId], references: [id], onDelete: Cascade)
-  department   Department   @relation(fields: [departmentId], references: [id])
-  branch       Branch?      @relation(fields: [branchId], references: [id])
-  employees    Employee[]   @relation("PositionEmployees")
+  organization      Organization       @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+  department        Department         @relation(fields: [departmentId], references: [id])
+  branch            Branch?            @relation(fields: [branchId], references: [id])
+  employees         Employee[]         @relation("PositionEmployees")
   employmentRecords EmploymentRecord[]
 
   @@unique([organizationId, code])
@@ -239,15 +247,15 @@ model Employee {
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt
 
-  organization Organization @relation(fields: [organizationId], references: [id], onDelete: Cascade)
-  user         User?        @relation(fields: [userId], references: [id])
-  department   Department?  @relation("DeptEmployees", fields: [departmentId], references: [id])
-  branch       Branch?      @relation("BranchEmployees", fields: [branchId], references: [id])
-  position     Position?    @relation("PositionEmployees", fields: [positionId], references: [id])
-  manager      Employee?    @relation("EmployeeManager", fields: [managerId], references: [id])
-  directReports Employee[]  @relation("EmployeeManager")
-  headOfDept   Department?  @relation("DeptHead")
-  branchManagerOf Branch?   @relation("BranchManager")
+  organization    Organization @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+  user            User?        @relation(fields: [userId], references: [id])
+  department      Department?  @relation("DeptEmployees", fields: [departmentId], references: [id])
+  branch          Branch?      @relation("BranchEmployees", fields: [branchId], references: [id])
+  position        Position?    @relation("PositionEmployees", fields: [positionId], references: [id])
+  manager         Employee?    @relation("EmployeeManager", fields: [managerId], references: [id])
+  directReports   Employee[]   @relation("EmployeeManager")
+  headOfDept      Department?  @relation("DeptHead")
+  branchManagerOf Branch?      @relation("BranchManager")
 
   educations        EmployeeEducation[]
   documents         EmployeeDocument[]
@@ -315,17 +323,17 @@ model EmployeeEducation {
 
 // Skeleton — bu bosqichda upload UI/storage yo'q, faqat jadval tayyor.
 model EmployeeDocument {
-  id                String   @id @default(cuid())
-  organizationId    String
-  employeeId        String
-  name              String
-  fileUrl           String
-  uploadedByUserId  String?
-  createdAt         DateTime @default(now())
+  id               String   @id @default(cuid())
+  organizationId   String
+  employeeId       String
+  name             String
+  fileUrl          String
+  uploadedByUserId String?
+  createdAt        DateTime @default(now())
 
-  organization Organization @relation(fields: [organizationId], references: [id], onDelete: Cascade)
-  employee     Employee     @relation(fields: [employeeId], references: [id], onDelete: Cascade)
-  uploadedByUser User?      @relation("DocumentUploadedBy", fields: [uploadedByUserId], references: [id])
+  organization   Organization @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+  employee       Employee     @relation(fields: [employeeId], references: [id], onDelete: Cascade)
+  uploadedByUser User?        @relation("DocumentUploadedBy", fields: [uploadedByUserId], references: [id])
 
   @@index([employeeId])
   @@map("employee_documents")
@@ -366,7 +374,7 @@ model WorkflowTemplate {
   createdAt      DateTime @default(now())
   updatedAt      DateTime @updatedAt
 
-  organization Organization    @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+  organization Organization       @relation(fields: [organizationId], references: [id], onDelete: Cascade)
   steps        WorkflowStep[]
   instances    WorkflowInstance[]
 
@@ -385,8 +393,8 @@ model WorkflowStep {
   approverUserId String? // approverType = SPECIFIC_USER bo'lsa
   actionType     StepActionType @default(APPROVE)
 
-  template        WorkflowTemplate     @relation(fields: [templateId], references: [id], onDelete: Cascade)
-  stepExecutions  WorkflowStepAction[]
+  template       WorkflowTemplate     @relation(fields: [templateId], references: [id], onDelete: Cascade)
+  stepExecutions WorkflowStepAction[]
 
   @@unique([templateId, order])
   @@map("workflow_steps")
@@ -401,23 +409,23 @@ enum WorkflowInstanceStatus {
 
 // Xodim tomonidan yuborilgan aniq ariza — shablon asosida yaratilgan instance
 model WorkflowInstance {
-  id               String                  @id @default(cuid())
-  organizationId   String
-  templateId       String
-  initiatorUserId  String // arizani kim yubordi
-  employeeId       String // qaysi xodimga tegishli (odatda initiator bilan bir xil)
-  formData         Json // to'ldirilgan forma qiymatlari (masalan boshlanish sanasi, kun soni)
+  id                String                 @id @default(cuid())
+  organizationId    String
+  templateId        String
+  initiatorUserId   String // arizani kim yubordi
+  employeeId        String // qaysi xodimga tegishli (odatda initiator bilan bir xil)
+  formData          Json // to'ldirilgan forma qiymatlari (masalan boshlanish sanasi, kun soni)
   generatedDocument String? // shablon + formData asosida generatsiya qilingan hujjat matni
-  status           WorkflowInstanceStatus  @default(IN_PROGRESS)
-  currentStepOrder Int                     @default(1) // hozir navbat qaysi bosqichda turibdi
-  createdAt        DateTime                @default(now())
-  updatedAt        DateTime                @updatedAt
+  status            WorkflowInstanceStatus @default(IN_PROGRESS)
+  currentStepOrder  Int                    @default(1) // hozir navbat qaysi bosqichda turibdi
+  createdAt         DateTime               @default(now())
+  updatedAt         DateTime               @updatedAt
 
-  organization Organization @relation(fields: [organizationId], references: [id], onDelete: Cascade)
-  template     WorkflowTemplate @relation(fields: [templateId], references: [id])
-  initiator    User             @relation("WorkflowInitiator", fields: [initiatorUserId], references: [id])
-  employee     Employee         @relation(fields: [employeeId], references: [id])
-  stepActions  WorkflowStepAction[]
+  organization         Organization          @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+  template             WorkflowTemplate      @relation(fields: [templateId], references: [id])
+  initiator            User                  @relation("WorkflowInitiator", fields: [initiatorUserId], references: [id])
+  employee             Employee              @relation(fields: [employeeId], references: [id])
+  stepActions          WorkflowStepAction[]
   attendanceCorrection AttendanceCorrection?
 
   @@index([organizationId])
@@ -435,14 +443,14 @@ enum StepActionStatus {
 // Har bir instance uchun har bir bosqichning haqiqiy natijasi —
 // "kim, qachon, qanday qaror qildi" shu yerda ko'rinadi (kuzatuv ekrani shu yerdan o'qiydi)
 model WorkflowStepAction {
-  id           String            @id @default(cuid())
-  instanceId   String
-  stepId       String
+  id             String           @id @default(cuid())
+  instanceId     String
+  stepId         String
   assignedUserId String? // qoida hisoblanib, kimga tayinlanganligi aniqlangach to'ldiriladi
-  status       StepActionStatus  @default(PENDING)
-  comment      String?
-  actedAt      DateTime?
-  createdAt    DateTime          @default(now())
+  status         StepActionStatus @default(PENDING)
+  comment        String?
+  actedAt        DateTime?
+  createdAt      DateTime         @default(now())
 
   instance     WorkflowInstance @relation(fields: [instanceId], references: [id], onDelete: Cascade)
   step         WorkflowStep     @relation(fields: [stepId], references: [id])
@@ -655,19 +663,19 @@ enum CorrectionStatus {
 // Workflow Engine orqali (WorkflowInstance) — bu yerdagi status faqat
 // Attendance nuqtai nazaridan qisqacha holatni ko'rsatadi.
 model AttendanceCorrection {
-  id                  String               @id @default(cuid())
-  organizationId      String
-  employeeId          String
-  attendanceRecordId  String?
-  date                DateTime             @db.Date
-  reasonType          CorrectionReasonType
-  requestedCheckIn    DateTime?
-  requestedCheckOut   DateTime?
-  comment             String?
-  status              CorrectionStatus     @default(PENDING_MANAGER)
-  workflowInstanceId  String?              @unique
-  createdAt           DateTime             @default(now())
-  updatedAt           DateTime             @updatedAt
+  id                 String               @id @default(cuid())
+  organizationId     String
+  employeeId         String
+  attendanceRecordId String?
+  date               DateTime             @db.Date
+  reasonType         CorrectionReasonType
+  requestedCheckIn   DateTime?
+  requestedCheckOut  DateTime?
+  comment            String?
+  status             CorrectionStatus     @default(PENDING_MANAGER)
+  workflowInstanceId String?              @unique
+  createdAt          DateTime             @default(now())
+  updatedAt          DateTime             @updatedAt
 
   organization     Organization      @relation(fields: [organizationId], references: [id], onDelete: Cascade)
   attendanceRecord AttendanceRecord? @relation(fields: [attendanceRecordId], references: [id])
@@ -777,4 +785,236 @@ model OrganizationTimesheetLine {
 
   @@unique([organizationTimesheetId, departmentTimesheetId])
   @@map("organization_timesheet_lines")
+}
+
+// ==========================================================================
+// LEARNING & DEVELOPMENT
+//
+// Xodim tomoni: katalog (materiallar), o'qish progressi, sevimlilar,
+// tayinlangan materiallar, tadbirlar afishasi, so'rovlar (rahbar tasdig'i)
+// va rivojlanish maqsadlari. Kontent tashqi havola (contentUrl) orqali
+// ochiladi. Kurs/material yaratish — alohida admin qismida quriladi.
+// ==========================================================================
+
+enum LearningMaterialType {
+  AUDIO
+  VIDEO
+  ARTICLE
+  BOOK
+  COURSE
+}
+
+enum LearningPublishStatus {
+  DRAFT
+  PUBLISHED
+  ARCHIVED
+}
+
+model LearningMaterial {
+  id               String                @id @default(cuid())
+  organizationId   String
+  title            String
+  description      String?
+  type             LearningMaterialType
+  coverUrl         String?
+  contentUrl       String?
+  durationMinutes  Int                   @default(0)
+  author           String?
+  tags             String[]              @default([])
+  status           LearningPublishStatus @default(PUBLISHED)
+  requiresApproval Boolean               @default(false) // true bo'lsa — xodim avval rahbardan so'raydi
+  publishedAt      DateTime              @default(now())
+  createdByUserId  String?
+  createdAt        DateTime              @default(now())
+  updatedAt        DateTime              @updatedAt
+
+  organization  Organization              @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+  progress      LearningProgress[]
+  favorites     LearningFavorite[]
+  assignments   LearningAssignment[]
+  requests      LearningRequest[]
+  goalMaterials DevelopmentGoalMaterial[]
+
+  @@index([organizationId, status, publishedAt])
+  @@map("learning_materials")
+}
+
+enum LearningProgressStatus {
+  IN_PROGRESS
+  COMPLETED
+}
+
+model LearningProgress {
+  id             String                 @id @default(cuid())
+  organizationId String
+  employeeId     String
+  materialId     String
+  progress       Int                    @default(0) // 0-100
+  status         LearningProgressStatus @default(IN_PROGRESS)
+  startedAt      DateTime               @default(now())
+  lastOpenedAt   DateTime               @default(now())
+  completedAt    DateTime?
+
+  organization Organization     @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+  material     LearningMaterial @relation(fields: [materialId], references: [id], onDelete: Cascade)
+
+  @@unique([employeeId, materialId])
+  @@index([organizationId, employeeId, status])
+  @@map("learning_progress")
+}
+
+model LearningFavorite {
+  id             String   @id @default(cuid())
+  organizationId String
+  employeeId     String
+  materialId     String
+  createdAt      DateTime @default(now())
+
+  organization Organization     @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+  material     LearningMaterial @relation(fields: [materialId], references: [id], onDelete: Cascade)
+
+  @@unique([employeeId, materialId])
+  @@map("learning_favorites")
+}
+
+// HR yoki rahbar xodimga materialni tayinlaydi (admin qismida yaratiladi).
+// Bajarilganlik LearningProgress bo'yicha aniqlanadi.
+model LearningAssignment {
+  id               String    @id @default(cuid())
+  organizationId   String
+  employeeId       String
+  materialId       String
+  assignedByUserId String?
+  dueDate          DateTime?
+  note             String?
+  createdAt        DateTime  @default(now())
+
+  organization Organization     @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+  material     LearningMaterial @relation(fields: [materialId], references: [id], onDelete: Cascade)
+
+  @@unique([employeeId, materialId])
+  @@index([organizationId, employeeId])
+  @@map("learning_assignments")
+}
+
+enum LearningEventFormat {
+  ONLINE
+  OFFLINE
+}
+
+model LearningEvent {
+  id               String                @id @default(cuid())
+  organizationId   String
+  title            String
+  description      String?
+  format           LearningEventFormat
+  location         String?
+  meetingUrl       String?
+  speaker          String?
+  coverUrl         String?
+  startsAt         DateTime
+  endsAt           DateTime
+  capacity         Int? // null — cheklanmagan
+  requiresApproval Boolean               @default(false)
+  status           LearningPublishStatus @default(PUBLISHED)
+  createdAt        DateTime              @default(now())
+  updatedAt        DateTime              @updatedAt
+
+  organization  Organization                @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+  registrations LearningEventRegistration[]
+  requests      LearningRequest[]
+
+  @@index([organizationId, status, startsAt])
+  @@map("learning_events")
+}
+
+enum LearningRegistrationStatus {
+  REGISTERED
+  CANCELLED
+  ATTENDED
+}
+
+model LearningEventRegistration {
+  id             String                     @id @default(cuid())
+  organizationId String
+  eventId        String
+  employeeId     String
+  status         LearningRegistrationStatus @default(REGISTERED)
+  createdAt      DateTime                   @default(now())
+  updatedAt      DateTime                   @updatedAt
+
+  organization Organization  @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+  event        LearningEvent @relation(fields: [eventId], references: [id], onDelete: Cascade)
+
+  @@unique([eventId, employeeId])
+  @@index([organizationId, employeeId])
+  @@map("learning_event_registrations")
+}
+
+enum LearningRequestStatus {
+  PENDING
+  APPROVED
+  REJECTED
+  CANCELLED
+}
+
+// Xodimning o'qish so'rovi — katalogdagi material/tadbir yoki tashqi kurs
+// (title + externalUrl). Rahbar tasdig'i admin/rahbar qismida quriladi.
+model LearningRequest {
+  id              String                @id @default(cuid())
+  organizationId  String
+  employeeId      String
+  materialId      String?
+  eventId         String?
+  title           String
+  externalUrl     String?
+  comment         String?
+  status          LearningRequestStatus @default(PENDING)
+  decidedByUserId String?
+  decidedAt       DateTime?
+  decisionComment String?
+  createdAt       DateTime              @default(now())
+  updatedAt       DateTime              @updatedAt
+
+  organization Organization      @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+  material     LearningMaterial? @relation(fields: [materialId], references: [id], onDelete: SetNull)
+  event        LearningEvent?    @relation(fields: [eventId], references: [id], onDelete: SetNull)
+
+  @@index([organizationId, employeeId, status])
+  @@map("learning_requests")
+}
+
+enum DevelopmentGoalStatus {
+  ACTIVE
+  COMPLETED
+  CANCELLED
+}
+
+model DevelopmentGoal {
+  id             String                @id @default(cuid())
+  organizationId String
+  employeeId     String
+  title          String
+  description    String?
+  dueDate        DateTime?
+  status         DevelopmentGoalStatus @default(ACTIVE)
+  createdAt      DateTime              @default(now())
+  updatedAt      DateTime              @updatedAt
+
+  organization Organization              @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+  materials    DevelopmentGoalMaterial[]
+
+  @@index([organizationId, employeeId])
+  @@map("development_goals")
+}
+
+model DevelopmentGoalMaterial {
+  goalId     String
+  materialId String
+
+  goal     DevelopmentGoal  @relation(fields: [goalId], references: [id], onDelete: Cascade)
+  material LearningMaterial @relation(fields: [materialId], references: [id], onDelete: Cascade)
+
+  @@id([goalId, materialId])
+  @@map("development_goal_materials")
 }
