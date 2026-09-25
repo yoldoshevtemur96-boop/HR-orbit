@@ -4,10 +4,13 @@ import Link from 'next/link';
 import { usePathname } from 'next/navigation';
 import { useAuthStore } from '@/store/authStore';
 import { roleLabel } from '@/lib/roleLabels';
+import { LEARNING_ADMIN_ROLES } from '@/lib/learningAdmin';
+import type { RoleName } from '@/types/auth';
 
 interface NavItem {
   label: string;
   href: string;
+  roles?: RoleName[]; // berilmasa — hamma uchun
 }
 
 // Xodim hayot aylanishi bosqichlariga mos 7 bo'lim: Core HR (xodim/bo'lim
@@ -24,6 +27,7 @@ const NAV_ITEMS: NavItem[] = [
   { label: 'Leave', href: '/workflow' },
   { label: 'Recruitment + Onboarding', href: '/recruitment' },
   { label: 'Learning & Development', href: '/learning' },
+  { label: "O'qitishni boshqarish", href: '/learning-admin', roles: LEARNING_ADMIN_ROLES },
   { label: 'HR Analytics', href: '/analytics' },
 ];
 
@@ -49,6 +53,9 @@ const ICONS: Record<string, JSX.Element> = {
   'Learning & Development': (
     <path d="M3 8l9-4 9 4-9 4-9-4Zm4 2v5c0 1.5 2.2 3 5 3s5-1.5 5-3v-5M21 8v6" />
   ),
+  "O'qitishni boshqarish": (
+    <path d="M4 5h16M4 12h10M4 19h7M17 14l2 2 3-4" />
+  ),
   'HR Analytics': (
     <path d="M4 19h16M7 16V9M12 16V5M17 16v-7" />
   ),
@@ -73,7 +80,7 @@ export function Sidebar() {
 
       <nav className="flex-1 overflow-y-auto px-4 py-3">
         <ul className="flex flex-col gap-1">
-          {NAV_ITEMS.map((item) => {
+          {NAV_ITEMS.filter((item) => !item.roles || (user && item.roles.includes(user.role))).map((item) => {
             const isActive = pathname === item.href || pathname?.startsWith(item.href + '/');
             return (
               <li key={item.href}>

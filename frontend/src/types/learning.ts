@@ -21,7 +21,13 @@ export interface LearningMaterial {
     lastOpenedAt: string;
     completedAt: string | null;
   } | null;
-  assignment: { dueDate: string | null; note: string | null; createdAt: string } | null;
+  assignment: {
+    dueDate: string | null;
+    note: string | null;
+    reason: 'LEGAL' | 'POSITION' | 'ONBOARDING' | 'DEVELOPMENT' | 'OTHER';
+    reasonText: string | null;
+    createdAt: string;
+  } | null;
 }
 
 export interface LearningMaterialDetail extends LearningMaterial {

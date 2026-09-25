@@ -1,6 +1,7 @@
 import type { LearningMaterialType, Prisma, RoleName } from '@prisma/client';
 import { prisma } from '@/config/prisma';
 import { AppError } from '@/common/errors/AppError';
+import { sendDueReminders } from './assignment.service';
 
 interface AuthContext {
   userId: string;
@@ -42,7 +43,7 @@ async function decorateMaterials(organizationId: string, employeeId: string, mat
   const [progress, favorites, assignments] = await Promise.all([
     prisma.learningProgress.findMany({ where: { organizationId, employeeId, materialId: { in: ids } } }),
     prisma.learningFavorite.findMany({ where: { organizationId, employeeId, materialId: { in: ids } }, select: { materialId: true } }),
-    prisma.learningAssignment.findMany({ where: { organizationId, employeeId, materialId: { in: ids } } }),
+    prisma.learningAssignment.findMany({ where: { organizationId, employeeId, materialId: { in: ids }, status: 'ACTIVE' } }),
   ]);
   const progressById = new Map(progress.map((p) => [p.materialId, p]));
   const favoriteIds = new Set(favorites.map((f) => f.materialId));
@@ -55,7 +56,9 @@ async function decorateMaterials(organizationId: string, employeeId: string, mat
       ...m,
       isFavorite: favoriteIds.has(m.id),
       myProgress: p ? { progress: p.progress, status: p.status, lastOpenedAt: p.lastOpenedAt, completedAt: p.completedAt } : null,
-      assignment: a ? { dueDate: a.dueDate, note: a.note, createdAt: a.createdAt } : null,
+      assignment: a
+        ? { dueDate: a.dueDate, note: a.note, reason: a.reason, reasonText: a.reasonText, createdAt: a.createdAt }
+        : null,
     };
   });
 }
@@ -125,7 +128,7 @@ async function assertMaterialAccessible(auth: AuthContext, employeeId: string, m
   if (!material.requiresApproval) return material;
 
   const [assignment, approved, progress] = await Promise.all([
-    prisma.learningAssignment.findUnique({ where: { employeeId_materialId: { employeeId, materialId } } }),
+    prisma.learningAssignment.findFirst({ where: { employeeId, materialId, status: 'ACTIVE' } }),
     prisma.learningRequest.findFirst({ where: { employeeId, materialId, status: 'APPROVED' } }),
     prisma.learningProgress.findUnique({ where: { employeeId_materialId: { employeeId, materialId } } }),
   ]);
@@ -187,7 +190,7 @@ export async function listMyProgress(auth: AuthContext, status: 'IN_PROGRESS' | 
 export async function listMyAssignments(auth: AuthContext) {
   const employeeId = await getSelfEmployeeId(auth);
   const rows = await prisma.learningAssignment.findMany({
-    where: { organizationId: auth.organizationId, employeeId, material: { status: 'PUBLISHED' } },
+    where: { organizationId: auth.organizationId, employeeId, status: 'ACTIVE', material: { status: 'PUBLISHED' } },
     orderBy: [{ dueDate: { sort: 'asc', nulls: 'last' } }, { createdAt: 'desc' }],
     include: { material: { select: MATERIAL_LIST_SELECT } },
   });
@@ -464,13 +467,16 @@ async function filterPublishedMaterialIds(organizationId: string, ids: string[])
 export async function getSummary(auth: AuthContext) {
   const employeeId = await getSelfEmployeeId(auth);
   const organizationId = auth.organizationId;
+  // Muddat eslatmalari shu yerda yuboriladi (cron o'rniga) — xato bo'lsa
+  // ham bosh sahifa ochilaverishi kerak.
+  await sendDueReminders(organizationId, employeeId, auth.userId).catch(() => undefined);
   const [favorites, pendingRequests, activeGoals, upcomingEvents, inProgress, assigned] = await Promise.all([
     prisma.learningFavorite.count({ where: { organizationId, employeeId, material: { status: 'PUBLISHED' } } }),
     prisma.learningRequest.count({ where: { organizationId, employeeId, status: 'PENDING' } }),
     prisma.developmentGoal.count({ where: { organizationId, employeeId, status: 'ACTIVE' } }),
     prisma.learningEvent.count({ where: { organizationId, status: 'PUBLISHED', endsAt: { gte: new Date() } } }),
     prisma.learningProgress.count({ where: { organizationId, employeeId, status: 'IN_PROGRESS' } }),
-    prisma.learningAssignment.count({ where: { organizationId, employeeId } }),
+    prisma.learningAssignment.count({ where: { organizationId, employeeId, status: 'ACTIVE' } }),
   ]);
   return { favorites, pendingRequests, activeGoals, upcomingEvents, inProgress, assigned };
 }

@@ -11,6 +11,8 @@ const TYPE_LABEL: Record<string, string> = {
   REQUEST_REJECTED: 'Rad etildi',
   HR_MESSAGE: 'HR xabari',
   DOCUMENT_AVAILABLE: 'Hujjat tayyor',
+  LEARNING_ASSIGNED: "Yangi o'quv material",
+  LEARNING_REMINDER: 'Muddat eslatmasi',
 };
 
 const POLL_INTERVAL_MS = 60_000;
@@ -56,6 +58,8 @@ export function NotificationBell() {
     setIsOpen(false);
     if (notification.entityType === 'WorkflowInstance' && notification.entityId) {
       router.push(`/workflow/${notification.entityId}`);
+    } else if (notification.entityType === 'LearningMaterial' && notification.entityId) {
+      router.push(`/learning/materials/${notification.entityId}`);
     }
   }
 

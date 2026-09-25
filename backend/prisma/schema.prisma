@@ -493,6 +493,8 @@ enum NotificationType {
   REQUEST_REJECTED
   HR_MESSAGE
   DOCUMENT_AVAILABLE
+  LEARNING_ASSIGNED
+  LEARNING_REMINDER
 }
 
 model Notification {
@@ -877,23 +879,55 @@ model LearningFavorite {
   @@map("learning_favorites")
 }
 
-// HR yoki rahbar xodimga materialni tayinlaydi (admin qismida yaratiladi).
-// Bajarilganlik LearningProgress bo'yicha aniqlanadi.
+// Tayinlash sababi — xodim kurs kartochkasida ko'radi
+enum LearningAssignmentReason {
+  LEGAL // Qonunchilik talabi
+  POSITION // Lavozim talabi
+  ONBOARDING // Ishga moslashish
+  DEVELOPMENT // Rivojlanish rejasi
+  OTHER // Boshqa (reasonText)
+}
+
+// Tayinlov qayerdan kelgan: qo'lda, qoida yoki CSV fayl orqali
+enum LearningAssignmentSource {
+  MANUAL
+  RULE
+  FILE
+}
+
+enum LearningAssignmentStatus {
+  ACTIVE
+  CANCELLED
+}
+
+// HR yoki rahbar xodimga materialni tayinlaydi. Bajarilganlik
+// LearningProgress bo'yicha aniqlanadi. Bir xodim x material uchun
+// bir nechta yozuv bo'lishi mumkin (tarix, davriy qayta tayinlash) —
+// lekin bir vaqtda faqat bittasi ACTIVE.
 model LearningAssignment {
-  id               String    @id @default(cuid())
-  organizationId   String
-  employeeId       String
-  materialId       String
-  assignedByUserId String?
-  dueDate          DateTime?
-  note             String?
-  createdAt        DateTime  @default(now())
+  id                String                   @id @default(cuid())
+  organizationId    String
+  employeeId        String
+  materialId        String
+  assignedByUserId  String?
+  dueDate           DateTime?
+  note              String?
+  reason            LearningAssignmentReason @default(DEVELOPMENT)
+  reasonText        String?
+  source            LearningAssignmentSource @default(MANUAL)
+  status            LearningAssignmentStatus @default(ACTIVE)
+  cancelledAt       DateTime?
+  cancelledByUserId String?
+  reminderSentAt    DateTime?
+  createdAt         DateTime                 @default(now())
+  updatedAt         DateTime                 @default(now()) @updatedAt
 
   organization Organization     @relation(fields: [organizationId], references: [id], onDelete: Cascade)
   material     LearningMaterial @relation(fields: [materialId], references: [id], onDelete: Cascade)
 
-  @@unique([employeeId, materialId])
   @@index([organizationId, employeeId])
+  @@index([organizationId, materialId, status])
+  @@index([employeeId, materialId])
   @@map("learning_assignments")
 }
 

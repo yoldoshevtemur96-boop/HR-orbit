@@ -3,7 +3,9 @@ export type NotificationType =
   | 'REQUEST_APPROVED'
   | 'REQUEST_REJECTED'
   | 'HR_MESSAGE'
-  | 'DOCUMENT_AVAILABLE';
+  | 'DOCUMENT_AVAILABLE'
+  | 'LEARNING_ASSIGNED'
+  | 'LEARNING_REMINDER';
 
 export interface Notification {
   id: string;

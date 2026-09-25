@@ -11,12 +11,18 @@ import {
   formatDate,
   formatDuration,
 } from '@/components/learning/materialUi';
+import { useAuthStore } from '@/store/authStore';
+import { LEARNING_ADMIN_ROLES } from '@/lib/learningAdmin';
+import { ASSIGNMENT_REASON_LABEL } from '@/types/learningAdmin';
 import type { LearningMaterialDetail } from '@/types/learning';
+import Link from 'next/link';
 
 const PROGRESS_STEPS = [25, 50, 75];
 
 export default function LearningMaterialPage() {
   const params = useParams<{ id: string }>();
+  const user = useAuthStore((s) => s.user);
+  const canAssign = Boolean(user && LEARNING_ADMIN_ROLES.includes(user.role));
   const [material, setMaterial] = useState<LearningMaterialDetail | null>(null);
   const [error, setError] = useState<string | null>(null);
   const [isBusy, setIsBusy] = useState(false);
@@ -98,7 +104,10 @@ export default function LearningMaterialPage() {
 
           {material.assignment && (
             <p className="rounded-md bg-amber-50 px-3 py-2 text-sm text-amber-800">
-              Sizga tayinlangan
+              Sizga tayinlangan ·{' '}
+              {material.assignment.reason === 'OTHER' && material.assignment.reasonText
+                ? material.assignment.reasonText
+                : ASSIGNMENT_REASON_LABEL[material.assignment.reason]}
               {material.assignment.dueDate && <> · muddat: {formatDate(material.assignment.dueDate)}</>}
               {material.assignment.note && <> · {material.assignment.note}</>}
             </p>
@@ -187,6 +196,15 @@ export default function LearningMaterialPage() {
             >
               {material.isFavorite ? '♥ Sevimlilarda' : '♡ Sevimlilarga qo‘shish'}
             </button>
+
+            {canAssign && (
+              <Link
+                href={`/learning-admin/assignments/new?materialId=${material.id}`}
+                className="rounded-lg border border-stone-200 px-4 py-2.5 text-sm font-medium text-stone-600 transition hover:bg-stone-50"
+              >
+                Xodimlarga tayinlash
+              </Link>
+            )}
           </div>
 
           {!material.hasAccess && (
