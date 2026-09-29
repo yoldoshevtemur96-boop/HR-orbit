@@ -145,7 +145,7 @@ learningAdminRouter.post('/rules/:id/activate', async (req, res) => {
 // Katalog (faqat HR — tekshiruv service ichida)
 // ---------------------------------------------------------------------------
 
-const materialTypeEnum = z.enum(['AUDIO', 'VIDEO', 'ARTICLE', 'BOOK', 'COURSE']);
+const materialTypeEnum = z.enum(['AUDIO', 'VIDEO', 'ARTICLE', 'BOOK', 'COURSE', 'INSTRUCTION', 'PRESENTATION']);
 const publishStatusEnum = z.enum(['DRAFT', 'PUBLISHED', 'ARCHIVED']);
 const optionalUrl = z
   .string()
@@ -156,11 +156,39 @@ const optionalUrl = z
   .optional()
   .or(z.literal('').transform(() => null));
 
+// Muqova: tashqi rasm havolasi yoki platformaga yuklangan fayl (/files/<id>)
+const coverUrlSchema = z
+  .union([z.string().trim().regex(/^\/files\/[\w-]+$/), z.string().trim().url("Muqova havolasi noto'g'ri").max(2000)])
+  .nullable()
+  .optional()
+  .or(z.literal('').transform(() => null));
+
+const optionalDate = z
+  .string()
+  .regex(/^\d{4}-\d{2}-\d{2}$/)
+  .transform((v) => new Date(`${v}T00:00:00.000+05:00`)) // Toshkent kuni boshi
+  .nullable()
+  .optional()
+  .or(z.literal('').transform(() => null));
+
 const materialSchema = z.object({
   title: z.string().trim().min(1, 'Nomini kiriting').max(300),
   description: z.string().trim().max(5000).nullable().optional(),
   type: materialTypeEnum,
-  coverUrl: optionalUrl,
+  coverUrl: coverUrlSchema,
+  contentSource: z.enum(['LINK', 'FILE']).optional(),
+  contentFileId: z.string().min(1).nullable().optional(),
+  displayMode: z.enum(['EMBED', 'NEW_TAB']).optional(),
+  completionRule: z.enum(['MANUAL', 'ON_OPEN', 'ON_FINISH']).optional(),
+  level: z.enum(['BEGINNER', 'INTERMEDIATE', 'ADVANCED']).nullable().optional(),
+  language: z.enum(['uz', 'ru', 'en']).nullable().optional(),
+  allowDownload: z.boolean().optional(),
+  visibility: z.enum(['ALL', 'AUDIENCE', 'HIDDEN']).optional(),
+  visibleDepartmentIds: z.array(z.string().min(1)).max(500).optional(),
+  visiblePositionIds: z.array(z.string().min(1)).max(500).optional(),
+  visibleBranchIds: z.array(z.string().min(1)).max(500).optional(),
+  availableFrom: optionalDate,
+  availableUntil: optionalDate,
   contentUrl: optionalUrl,
   durationMinutes: z.coerce.number().int().min(0).max(100000).optional(),
   author: z.string().trim().max(200).nullable().optional(),

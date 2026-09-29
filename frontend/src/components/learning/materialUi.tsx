@@ -1,6 +1,7 @@
 'use client';
 
 import Link from 'next/link';
+import { resolveFileUrl } from '@/lib/api';
 import type { LearningMaterial, LearningMaterialType } from '@/types/learning';
 
 export const MATERIAL_TYPE_LABEL: Record<LearningMaterialType, string> = {
@@ -9,6 +10,8 @@ export const MATERIAL_TYPE_LABEL: Record<LearningMaterialType, string> = {
   ARTICLE: 'maqola',
   BOOK: 'kitob',
   COURSE: 'kurs',
+  INSTRUCTION: "yo'riqnoma",
+  PRESENTATION: 'taqdimot',
 };
 
 export const MATERIAL_TYPE_STYLE: Record<LearningMaterialType, string> = {
@@ -17,6 +20,8 @@ export const MATERIAL_TYPE_STYLE: Record<LearningMaterialType, string> = {
   ARTICLE: 'bg-orange-50 text-orange-700',
   BOOK: 'bg-rose-50 text-rose-700',
   COURSE: 'bg-violet-50 text-violet-700',
+  INSTRUCTION: 'bg-yellow-50 text-yellow-700',
+  PRESENTATION: 'bg-teal-50 text-teal-700',
 };
 
 const TYPE_ICON: Record<LearningMaterialType, JSX.Element> = {
@@ -25,6 +30,8 @@ const TYPE_ICON: Record<LearningMaterialType, JSX.Element> = {
   ARTICLE: <path d="M6 3h9l4 4v14H6V3Zm9 0v4h4M9 11h6M9 15h6" />,
   BOOK: <path d="M4 5a2 2 0 0 1 2-2h13v16H6a2 2 0 0 0-2 2V5Zm0 14a2 2 0 0 1 2-2h13" />,
   COURSE: <path d="M3 8l9-4 9 4-9 4-9-4Zm4 2v5c0 1.5 2.2 3 5 3s5-1.5 5-3v-5" />,
+  INSTRUCTION: <path d="M9 4h6v2H9V4Zm-3 1h2m8 0h2v16H6V5m3 6h6m-6 4h4" />,
+  PRESENTATION: <path d="M3 4h18M5 4v11h14V4M12 15v4m-4 2 4-2 4 2M9 11l2-2 2 2 3-3" />,
 };
 
 // Muqova rasmi bo'lmasa — material id'sidan barqaror gradient tanlanadi,
@@ -63,7 +70,7 @@ export function MaterialCover({
 }) {
   if (material.coverUrl) {
     // eslint-disable-next-line @next/next/no-img-element
-    return <img src={material.coverUrl} alt="" className={`object-cover ${className}`} />;
+    return <img src={resolveFileUrl(material.coverUrl) ?? ''} alt="" className={`object-cover ${className}`} />;
   }
   return (
     <div

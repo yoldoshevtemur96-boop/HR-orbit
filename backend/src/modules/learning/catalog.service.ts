@@ -1,7 +1,18 @@
-import type { LearningMaterialType, LearningPublishStatus, Prisma, RoleName } from '@prisma/client';
+import type {
+  LearningCompletionRule,
+  LearningContentSource,
+  LearningDisplayMode,
+  LearningLevel,
+  LearningMaterialType,
+  LearningPublishStatus,
+  LearningVisibility,
+  Prisma,
+  RoleName,
+} from '@prisma/client';
 import { prisma } from '@/config/prisma';
 import { AppError } from '@/common/errors/AppError';
 import { isLearningAdmin } from './assignment.service';
+import { assertFileInOrganization, signedFilePath } from '@/modules/files/file.service';
 
 interface AuthContext {
   userId: string;
@@ -27,16 +38,82 @@ export interface MaterialInput {
   tags?: string[];
   requiresApproval?: boolean;
   status?: LearningPublishStatus;
+  contentSource?: LearningContentSource;
+  contentFileId?: string | null;
+  displayMode?: LearningDisplayMode;
+  completionRule?: LearningCompletionRule;
+  level?: LearningLevel | null;
+  language?: string | null;
+  allowDownload?: boolean;
+  visibility?: LearningVisibility;
+  visibleDepartmentIds?: string[];
+  visiblePositionIds?: string[];
+  visibleBranchIds?: string[];
+  availableFrom?: Date | null;
+  availableUntil?: Date | null;
 }
 
 function normalizeTags(tags: string[] | undefined) {
   return [...new Set((tags ?? []).map((t) => t.trim().toLowerCase().replace(/^#/, '')).filter(Boolean))].slice(0, 10);
 }
 
-function assertPublishable(status: LearningPublishStatus | undefined, contentUrl: string | null | undefined) {
-  if (status === 'PUBLISHED' && !contentUrl) {
-    throw AppError.badRequest("Nashr qilish uchun kontent havolasini kiriting");
+function assertPublishable(state: {
+  status: LearningPublishStatus;
+  contentSource: LearningContentSource;
+  contentUrl: string | null | undefined;
+  contentFileId: string | null | undefined;
+  visibility: LearningVisibility;
+  audienceSize: number;
+  availableFrom: Date | null | undefined;
+  availableUntil: Date | null | undefined;
+}) {
+  if (state.availableFrom && state.availableUntil && state.availableFrom > state.availableUntil) {
+    throw AppError.badRequest("Ko'rinish sanalari noto'g'ri: boshlanishi tugashidan keyin");
   }
+  if (state.status !== 'PUBLISHED') return;
+  if (state.contentSource === 'LINK' && !state.contentUrl) {
+    throw AppError.badRequest('Nashr qilish uchun kontent havolasini kiriting');
+  }
+  if (state.contentSource === 'FILE' && !state.contentFileId) {
+    throw AppError.badRequest('Nashr qilish uchun kontent faylini yuklang');
+  }
+  if (state.visibility === 'AUDIENCE' && state.audienceSize === 0) {
+    throw AppError.badRequest("'Faqat tanlanganlarga' uchun kamida bitta bo'lim, lavozim yoki filial tanlang");
+  }
+}
+
+// Kiritilgan sozlamalarni Prisma ma'lumotiga aylantiradi (create va update uchun umumiy)
+type SettingsKey =
+  | 'contentSource'
+  | 'contentFileId'
+  | 'displayMode'
+  | 'completionRule'
+  | 'level'
+  | 'language'
+  | 'allowDownload'
+  | 'visibility'
+  | 'visibleDepartmentIds'
+  | 'visiblePositionIds'
+  | 'visibleBranchIds'
+  | 'availableFrom'
+  | 'availableUntil';
+
+function settingsData(input: Partial<MaterialInput>) {
+  const data: Partial<Pick<Prisma.LearningMaterialUncheckedCreateInput, SettingsKey>> = {};
+  if (input.contentSource !== undefined) data.contentSource = input.contentSource;
+  if (input.contentFileId !== undefined) data.contentFileId = input.contentFileId || null;
+  if (input.displayMode !== undefined) data.displayMode = input.displayMode;
+  if (input.completionRule !== undefined) data.completionRule = input.completionRule;
+  if (input.level !== undefined) data.level = input.level;
+  if (input.language !== undefined) data.language = input.language || null;
+  if (input.allowDownload !== undefined) data.allowDownload = input.allowDownload;
+  if (input.visibility !== undefined) data.visibility = input.visibility;
+  if (input.visibleDepartmentIds !== undefined) data.visibleDepartmentIds = input.visibleDepartmentIds;
+  if (input.visiblePositionIds !== undefined) data.visiblePositionIds = input.visiblePositionIds;
+  if (input.visibleBranchIds !== undefined) data.visibleBranchIds = input.visibleBranchIds;
+  if (input.availableFrom !== undefined) data.availableFrom = input.availableFrom;
+  if (input.availableUntil !== undefined) data.availableUntil = input.availableUntil;
+  return data;
 }
 
 export async function listCatalog(
@@ -71,6 +148,8 @@ export async function listCatalog(
       requiresApproval: true,
       publishedAt: true,
       updatedAt: true,
+      visibility: true,
+      contentSource: true,
     },
   });
 
@@ -110,17 +189,43 @@ export async function listCatalog(
   };
 }
 
-export async function getCatalogMaterial(auth: AuthContext, materialId: string) {
+async function getMaterialRow(auth: AuthContext, materialId: string) {
   assertHr(auth);
   const material = await prisma.learningMaterial.findFirst({ where: { id: materialId, organizationId: auth.organizationId } });
   if (!material) throw AppError.notFound('Material topilmadi');
   return material;
 }
 
+// Tahrirlash formasi uchun: material + yuklangan kontent fayli ma'lumoti
+export async function getCatalogMaterial(auth: AuthContext, materialId: string) {
+  const material = await getMaterialRow(auth, materialId);
+  const contentFile = material.contentFileId
+    ? await prisma.storedFile.findUnique({
+        where: { id: material.contentFileId },
+        select: { id: true, fileName: true, mimeType: true, sizeBytes: true },
+      })
+    : null;
+  return {
+    ...material,
+    contentFile: contentFile ? { ...contentFile, url: signedFilePath(contentFile.id) } : null,
+  };
+}
+
 export async function createMaterial(auth: AuthContext, input: MaterialInput) {
   assertHr(auth);
   const status = input.status ?? 'DRAFT';
-  assertPublishable(status, input.contentUrl);
+  if (input.contentFileId) await assertFileInOrganization(auth.organizationId, input.contentFileId);
+  assertPublishable({
+    status,
+    contentSource: input.contentSource ?? 'LINK',
+    contentUrl: input.contentUrl,
+    contentFileId: input.contentFileId,
+    visibility: input.visibility ?? 'ALL',
+    audienceSize:
+      (input.visibleDepartmentIds?.length ?? 0) + (input.visiblePositionIds?.length ?? 0) + (input.visibleBranchIds?.length ?? 0),
+    availableFrom: input.availableFrom,
+    availableUntil: input.availableUntil,
+  });
   return prisma.learningMaterial.create({
     data: {
       organizationId: auth.organizationId,
@@ -136,17 +241,28 @@ export async function createMaterial(auth: AuthContext, input: MaterialInput) {
       requiresApproval: Boolean(input.requiresApproval),
       status,
       publishedAt: new Date(),
+      ...settingsData(input),
     },
   });
 }
 
 export async function updateMaterial(auth: AuthContext, materialId: string, input: Partial<MaterialInput>) {
-  const existing = await getCatalogMaterial(auth, materialId);
-  const nextStatus = input.status ?? existing.status;
-  const nextContentUrl = input.contentUrl !== undefined ? input.contentUrl : existing.contentUrl;
-  assertPublishable(nextStatus, nextContentUrl);
+  const existing = await getMaterialRow(auth, materialId);
+  if (input.contentFileId) await assertFileInOrganization(auth.organizationId, input.contentFileId);
+  const pick = <K extends keyof MaterialInput & keyof typeof existing>(key: K) =>
+    (input[key] !== undefined ? input[key] : existing[key]) as (typeof existing)[K];
+  assertPublishable({
+    status: pick('status'),
+    contentSource: pick('contentSource'),
+    contentUrl: pick('contentUrl'),
+    contentFileId: pick('contentFileId'),
+    visibility: pick('visibility'),
+    audienceSize: pick('visibleDepartmentIds').length + pick('visiblePositionIds').length + pick('visibleBranchIds').length,
+    availableFrom: pick('availableFrom'),
+    availableUntil: pick('availableUntil'),
+  });
 
-  const data: Prisma.LearningMaterialUpdateInput = {};
+  const data: Prisma.LearningMaterialUncheckedUpdateInput = { ...settingsData(input) };
   if (input.title !== undefined) data.title = input.title.trim();
   if (input.description !== undefined) data.description = input.description?.trim() || null;
   if (input.type !== undefined) data.type = input.type;

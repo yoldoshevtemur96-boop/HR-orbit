@@ -4,8 +4,15 @@ import { useEffect, useState } from 'react';
 import Link from 'next/link';
 import { useParams, useRouter } from 'next/navigation';
 import { api } from '@/lib/api';
-import { MaterialForm, type MaterialFormValues, type PublishStatus } from '@/components/learning-admin/MaterialForm';
-import type { LearningMaterialType } from '@/types/learning';
+import { MaterialForm, toMaterialPayload, type MaterialFormValues, type PublishStatus } from '@/components/learning-admin/MaterialForm';
+import type {
+  LearningCompletionRule,
+  LearningContentSource,
+  LearningDisplayMode,
+  LearningLevel,
+  LearningMaterialType,
+  LearningVisibility,
+} from '@/types/learning';
 
 interface AdminMaterial {
   id: string;
@@ -19,6 +26,25 @@ interface AdminMaterial {
   tags: string[];
   requiresApproval: boolean;
   status: PublishStatus;
+  contentSource: LearningContentSource;
+  contentFile: { id: string; fileName: string; mimeType: string; sizeBytes: number; url: string } | null;
+  displayMode: LearningDisplayMode;
+  completionRule: LearningCompletionRule;
+  level: LearningLevel | null;
+  language: 'uz' | 'ru' | 'en' | null;
+  allowDownload: boolean;
+  visibility: LearningVisibility;
+  visibleDepartmentIds: string[];
+  visiblePositionIds: string[];
+  visibleBranchIds: string[];
+  availableFrom: string | null;
+  availableUntil: string | null;
+}
+
+// ISO sana -> Toshkent bo'yicha yyyy-mm-dd (date input uchun)
+function toDateInput(iso: string | null) {
+  if (!iso) return '';
+  return new Date(new Date(iso).getTime() + 5 * 60 * 60 * 1000).toISOString().slice(0, 10);
 }
 
 const STATUS_LABEL: Record<PublishStatus, string> = {
@@ -71,6 +97,19 @@ export default function EditMaterialPage() {
     author: material.author ?? '',
     tags: material.tags,
     requiresApproval: material.requiresApproval,
+    contentSource: material.contentSource,
+    contentFile: material.contentFile,
+    displayMode: material.displayMode,
+    completionRule: material.completionRule,
+    level: material.level ?? '',
+    language: material.language ?? '',
+    allowDownload: material.allowDownload,
+    visibility: material.visibility,
+    visibleDepartmentIds: material.visibleDepartmentIds,
+    visiblePositionIds: material.visiblePositionIds,
+    visibleBranchIds: material.visibleBranchIds,
+    availableFrom: toDateInput(material.availableFrom),
+    availableUntil: toDateInput(material.availableUntil),
   };
 
   return (
@@ -127,7 +166,7 @@ export default function EditMaterialPage() {
         currentStatus={material.status}
         isSaving={isSaving}
         error={error}
-        onSubmit={(values, status) => save({ ...values, status })}
+        onSubmit={(values, status) => save({ ...toMaterialPayload(values), status })}
       />
     </div>
   );

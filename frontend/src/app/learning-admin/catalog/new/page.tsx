@@ -3,7 +3,13 @@
 import { useState } from 'react';
 import { useRouter } from 'next/navigation';
 import { api } from '@/lib/api';
-import { EMPTY_MATERIAL, MaterialForm, type MaterialFormValues, type PublishStatus } from '@/components/learning-admin/MaterialForm';
+import {
+  EMPTY_MATERIAL,
+  MaterialForm,
+  toMaterialPayload,
+  type MaterialFormValues,
+  type PublishStatus,
+} from '@/components/learning-admin/MaterialForm';
 
 export default function NewMaterialPage() {
   const router = useRouter();
@@ -14,7 +20,7 @@ export default function NewMaterialPage() {
     setIsSaving(true);
     setError(null);
     try {
-      await api.post('/learning-admin/catalog', { ...values, status });
+      await api.post('/learning-admin/catalog', { ...toMaterialPayload(values), status });
       router.push('/learning-admin/catalog');
     } catch (err: any) {
       setError(err?.response?.data?.error?.message ?? err?.response?.data?.error?.issues?.[0]?.message ?? 'Saqlashda xatolik');

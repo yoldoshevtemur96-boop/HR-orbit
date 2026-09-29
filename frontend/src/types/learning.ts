@@ -1,4 +1,17 @@
-export type LearningMaterialType = 'AUDIO' | 'VIDEO' | 'ARTICLE' | 'BOOK' | 'COURSE';
+export type LearningMaterialType = 'AUDIO' | 'VIDEO' | 'ARTICLE' | 'BOOK' | 'COURSE' | 'INSTRUCTION' | 'PRESENTATION';
+export type LearningContentSource = 'LINK' | 'FILE';
+export type LearningDisplayMode = 'EMBED' | 'NEW_TAB';
+export type LearningCompletionRule = 'MANUAL' | 'ON_OPEN' | 'ON_FINISH';
+export type LearningLevel = 'BEGINNER' | 'INTERMEDIATE' | 'ADVANCED';
+export type LearningVisibility = 'ALL' | 'AUDIENCE' | 'HIDDEN';
+
+export const LEVEL_LABEL: Record<LearningLevel, string> = {
+  BEGINNER: "Boshlang'ich",
+  INTERMEDIATE: "O'rta",
+  ADVANCED: 'Yuqori',
+};
+
+export const LANGUAGE_LABEL: Record<string, string> = { uz: "O'zbekcha", ru: 'Ruscha', en: 'Inglizcha' };
 export type LearningProgressStatus = 'IN_PROGRESS' | 'COMPLETED';
 export type LearningRequestStatus = 'PENDING' | 'APPROVED' | 'REJECTED' | 'CANCELLED';
 export type DevelopmentGoalStatus = 'ACTIVE' | 'COMPLETED' | 'CANCELLED';
@@ -31,6 +44,14 @@ export interface LearningMaterial {
 }
 
 export interface LearningMaterialDetail extends LearningMaterial {
+  contentSource: LearningContentSource;
+  displayMode: LearningDisplayMode;
+  completionRule: LearningCompletionRule;
+  allowDownload: boolean;
+  level: LearningLevel | null;
+  language: string | null;
+  downloadUrl: string | null;
+  contentFile: { fileName: string; mimeType: string; sizeBytes: number } | null;
   contentUrl: string | null;
   hasAccess: boolean;
   request: { id: string; status: LearningRequestStatus } | null;

@@ -31,3 +31,11 @@ api.interceptors.response.use(
     return Promise.reject(error);
   },
 );
+
+// Backend'ga yuklangan fayllar nisbiy manzil bilan keladi (/files/<id>...) —
+// ularni API bazaviy manziliga qo'shamiz. Tashqi havolalar o'zgarmaydi.
+export function resolveFileUrl(url: string | null | undefined): string | null {
+  if (!url) return null;
+  if (url.startsWith('/files/')) return `${api.defaults.baseURL}${url}`;
+  return url;
+}

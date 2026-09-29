@@ -19,4 +19,10 @@ export const env = {
     accessExpiresIn: process.env.JWT_ACCESS_EXPIRES_IN ?? '15m',
     refreshExpiresIn: process.env.JWT_REFRESH_EXPIRES_IN ?? '7d',
   },
+  // Fayl saqlash (ixtiyoriy). Berilmasa — fayllar vaqtincha bazada saqlanadi.
+  supabase: {
+    url: process.env.SUPABASE_URL?.replace(/\/$/, '') ?? '',
+    serviceKey: process.env.SUPABASE_SERVICE_KEY ?? '',
+    bucket: process.env.SUPABASE_BUCKET ?? 'learning',
+  },
 } as const;

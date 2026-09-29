@@ -6,7 +6,7 @@ import { api } from '@/lib/api';
 import { EmptyState, MATERIAL_TYPE_LABEL, MaterialCard, PageBackLink } from '@/components/learning/materialUi';
 import type { LearningMaterial, LearningMaterialType } from '@/types/learning';
 
-const TYPE_FILTERS: ('' | LearningMaterialType)[] = ['', 'COURSE', 'VIDEO', 'AUDIO', 'ARTICLE', 'BOOK'];
+const TYPE_FILTERS: ('' | LearningMaterialType)[] = ['', 'COURSE', 'VIDEO', 'AUDIO', 'ARTICLE', 'BOOK', 'INSTRUCTION', 'PRESENTATION'];
 
 export default function LearningCatalogPage() {
   return (

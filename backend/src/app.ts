@@ -14,8 +14,13 @@ import { notificationRouter } from '@/modules/notifications/notification.routes'
 import { attendanceRouter } from '@/modules/attendance/attendance.routes';
 import { learningRouter } from '@/modules/learning/learning.routes';
 import { learningAdminRouter } from '@/modules/learning/learning-admin.routes';
+import { filePublicRouter, fileUploadRouter } from '@/modules/files/file.routes';
 
 export const app = express();
+
+// Fayllarni berish helmet'dan oldin: rasm/video/PDF frontend domenida ochilishi
+// kerak (helmet CORP=same-origin va X-Frame-Options qo'yadi).
+app.use('/api/files', cors({ origin: env.clientOrigin, credentials: true }), filePublicRouter);
 
 app.use(helmet());
 app.use(cors({ origin: env.clientOrigin, credentials: true }));
@@ -35,6 +40,7 @@ app.use('/api/notifications', notificationRouter);
 app.use('/api/attendance', attendanceRouter);
 app.use('/api/learning', learningRouter);
 app.use('/api/learning-admin', learningAdminRouter);
+app.use('/api/uploads', fileUploadRouter);
 
 app.use(notFoundHandler);
 app.use(errorHandler);

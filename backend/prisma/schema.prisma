@@ -48,6 +48,7 @@ model Organization {
   learningFavorites          LearningFavorite[]
   learningRecommendations    LearningRecommendation[]
   learningAssignmentRules    LearningAssignmentRule[]
+  storedFiles                StoredFile[]
   learningAssignments        LearningAssignment[]
   learningEvents             LearningEvent[]
   learningEventRegistrations LearningEventRegistration[]
@@ -807,6 +808,40 @@ enum LearningMaterialType {
   ARTICLE
   BOOK
   COURSE
+  INSTRUCTION // yo'riqnoma
+  PRESENTATION // taqdimot
+}
+
+// Kontent manbai: tashqi havola yoki platformaga yuklangan fayl
+enum LearningContentSource {
+  LINK
+  FILE
+}
+
+// Kontent qanday ochiladi: platforma ichida (PDF ko'ruvchi, pleyer) yoki yangi oynada
+enum LearningDisplayMode {
+  EMBED
+  NEW_TAB
+}
+
+// Material qachon "tugatilgan" hisoblanadi (Moodle "completion tracking")
+enum LearningCompletionRule {
+  MANUAL // xodim "Tugatdim"ni bosadi
+  ON_OPEN // ochilganda
+  ON_FINISH // video/audio oxirigacha ko'rilganda
+}
+
+enum LearningLevel {
+  BEGINNER
+  INTERMEDIATE
+  ADVANCED
+}
+
+// Katalogda kim ko'radi. Tayinlangan xodim har doim ko'radi.
+enum LearningVisibility {
+  ALL
+  AUDIENCE
+  HIDDEN
 }
 
 enum LearningPublishStatus {
@@ -815,23 +850,63 @@ enum LearningPublishStatus {
   ARCHIVED
 }
 
-model LearningMaterial {
-  id               String                @id @default(cuid())
+// Platformaga yuklangan fayl (muqova, material kontenti). Supabase Storage
+// sozlangan bo'lsa — o'sha yerda, aks holda vaqtincha bazaning o'zida.
+enum StoredFileStorage {
+  DB
+  SUPABASE
+}
+
+model StoredFile {
+  id               String            @id @default(cuid())
   organizationId   String
-  title            String
-  description      String?
-  type             LearningMaterialType
-  coverUrl         String?
-  contentUrl       String?
-  durationMinutes  Int                   @default(0)
-  author           String?
-  tags             String[]              @default([])
-  status           LearningPublishStatus @default(PUBLISHED)
-  requiresApproval Boolean               @default(false) // true bo'lsa — xodim avval rahbardan so'raydi
-  publishedAt      DateTime              @default(now())
-  createdByUserId  String?
-  createdAt        DateTime              @default(now())
-  updatedAt        DateTime              @updatedAt
+  fileName         String
+  mimeType         String
+  sizeBytes        Int
+  storage          StoredFileStorage
+  data             Bytes? // storage = DB
+  storageKey       String? // storage = SUPABASE
+  isPublic         Boolean           @default(false) // muqova — ochiq; kontent — imzoli havola bilan
+  uploadedByUserId String?
+  createdAt        DateTime          @default(now())
+
+  organization Organization @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+
+  @@index([organizationId])
+  @@map("stored_files")
+}
+
+model LearningMaterial {
+  id                   String                 @id @default(cuid())
+  organizationId       String
+  title                String
+  description          String?
+  type                 LearningMaterialType
+  coverUrl             String?
+  contentUrl           String?
+  durationMinutes      Int                    @default(0)
+  author               String?
+  tags                 String[]               @default([])
+  status               LearningPublishStatus  @default(PUBLISHED)
+  requiresApproval     Boolean                @default(false) // true bo'lsa — xodim avval rahbardan so'raydi
+  contentSource        LearningContentSource  @default(LINK)
+  contentFileId        String? // contentSource = FILE bo'lsa
+  displayMode          LearningDisplayMode    @default(NEW_TAB)
+  completionRule       LearningCompletionRule @default(MANUAL)
+  level                LearningLevel?
+  language             String? // uz | ru | en
+  allowDownload        Boolean                @default(true)
+  visibility           LearningVisibility     @default(ALL)
+  visibleDepartmentIds String[]               @default([])
+  visiblePositionIds   String[]               @default([])
+  visibleBranchIds     String[]               @default([])
+  availableFrom        DateTime?
+  availableUntil       DateTime?
+  pendingAssignment    Json? // qoralamada saqlangan tayinlash sozlamasi — nashrda bajariladi
+  publishedAt          DateTime               @default(now())
+  createdByUserId      String?
+  createdAt            DateTime               @default(now())
+  updatedAt            DateTime               @updatedAt
 
   organization    Organization              @relation(fields: [organizationId], references: [id], onDelete: Cascade)
   progress        LearningProgress[]

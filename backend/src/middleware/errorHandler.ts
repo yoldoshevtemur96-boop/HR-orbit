@@ -1,4 +1,5 @@
 import { NextFunction, Request, Response } from 'express';
+import { MulterError } from 'multer';
 import { ZodError } from 'zod';
 import { AppError } from '@/common/errors/AppError';
 
@@ -17,6 +18,12 @@ export function errorHandler(err: unknown, req: Request, res: Response, _next: N
         message: "Kiritilgan ma'lumotlar noto'g'ri",
         issues: err.issues.map((i) => ({ path: i.path.join('.'), message: i.message })),
       },
+    });
+  }
+
+  if (err instanceof MulterError) {
+    return res.status(400).json({
+      error: { message: err.code === 'LIMIT_FILE_SIZE' ? 'Fayl juda katta' : "Faylni yuklab bo'lmadi" },
     });
   }
 

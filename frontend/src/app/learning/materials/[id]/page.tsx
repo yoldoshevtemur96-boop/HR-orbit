@@ -2,7 +2,7 @@
 
 import { useCallback, useEffect, useState } from 'react';
 import { useParams } from 'next/navigation';
-import { api } from '@/lib/api';
+import { api, resolveFileUrl } from '@/lib/api';
 import {
   MaterialCover,
   PageBackLink,
@@ -14,7 +14,8 @@ import {
 import { useAuthStore } from '@/store/authStore';
 import { LEARNING_ADMIN_ROLES } from '@/lib/learningAdmin';
 import { ASSIGNMENT_REASON_LABEL } from '@/types/learningAdmin';
-import type { LearningMaterialDetail } from '@/types/learning';
+import { LANGUAGE_LABEL, LEVEL_LABEL, type LearningMaterialDetail } from '@/types/learning';
+import { ContentViewer, canEmbedContent } from '@/components/learning/ContentViewer';
 import Link from 'next/link';
 import { RecommendModal } from '@/components/learning/RecommendModal';
 
@@ -28,6 +29,7 @@ export default function LearningMaterialPage() {
   const [error, setError] = useState<string | null>(null);
   const [isBusy, setIsBusy] = useState(false);
   const [isRecommendOpen, setIsRecommendOpen] = useState(false);
+  const [showViewer, setShowViewer] = useState(false);
 
   const load = useCallback(() => {
     api
@@ -58,9 +60,37 @@ export default function LearningMaterialPage() {
   // havola so'rovdan oldin ochiladi.
   async function handleOpen() {
     if (!material) return;
-    if (material.contentUrl) window.open(material.contentUrl, '_blank', 'noopener');
+    if (!material.contentUrl) {
+      setError("Bu material uchun kontent hali qo'shilmagan");
+      return;
+    }
+    if (canEmbedContent(material)) {
+      setShowViewer(true);
+    } else {
+      window.open(resolveFileUrl(material.contentUrl) ?? material.contentUrl, '_blank', 'noopener');
+    }
     await run(() => api.post(`/learning/materials/${material.id}/start`));
-    if (!material.contentUrl) setError("Bu material uchun havola hali qo'shilmagan");
+  }
+
+  // Video/audio pleyerdan keladigan progress — sahifani qayta yuklamasdan yoziladi
+  async function reportProgress(percent: number) {
+    if (!material) return;
+    const cap = material.completionRule === 'ON_FINISH' ? percent : Math.min(percent, 95);
+    try {
+      await api.put(`/learning/materials/${material.id}/progress`, { progress: cap });
+      setMaterial((m) =>
+        m && m.myProgress && m.myProgress.status !== 'COMPLETED'
+          ? { ...m, myProgress: { ...m.myProgress, progress: Math.max(m.myProgress.progress, cap) } }
+          : m,
+      );
+    } catch {
+      // progress yozilmasa ham ko'rish davom etaveradi
+    }
+  }
+
+  async function handleFinished() {
+    if (!material || material.completionRule !== 'ON_FINISH') return;
+    await run(() => api.put(`/learning/materials/${material.id}/progress`, { progress: 100 }));
   }
 
   if (!material) {
@@ -77,6 +107,15 @@ export default function LearningMaterialPage() {
   const progress = material.myProgress?.progress ?? 0;
   const isStarted = Boolean(material.myProgress);
   const isCompleted = material.myProgress?.status === 'COMPLETED';
+  const isMediaFile = Boolean(material.contentFile?.mimeType.match(/^(video|audio)\//));
+  // Qo'lda progress tugmalari — faqat "Tugatdim" shartli va media bo'lmagan materiallar uchun
+  const showManualProgress = material.completionRule === 'MANUAL' && !isMediaFile;
+  const completionHint =
+    material.completionRule === 'ON_OPEN'
+      ? 'Ochilganda tugatilgan hisoblanadi'
+      : material.completionRule === 'ON_FINISH'
+        ? 'Oxirigacha ko‘rilganda tugatilgan hisoblanadi'
+        : null;
 
   return (
     <div className="flex flex-col gap-6">
@@ -90,6 +129,8 @@ export default function LearningMaterialPage() {
             <TypeBadge type={material.type} />
             <span className="text-sm text-stone-400">{formatDuration(material.durationMinutes)}</span>
             {material.author && <span className="text-sm text-stone-400">· {material.author}</span>}
+            {material.level && <span className="text-sm text-stone-400">· {LEVEL_LABEL[material.level]}</span>}
+            {material.language && <span className="text-sm text-stone-400">· {LANGUAGE_LABEL[material.language] ?? material.language}</span>}
           </div>
           <h1 className="font-display text-2xl font-semibold text-stone-900">{material.title}</h1>
           {material.description && <p className="text-sm leading-relaxed text-stone-600">{material.description}</p>}
@@ -122,7 +163,8 @@ export default function LearningMaterialPage() {
                 <span className="font-semibold text-stone-800">{progress} %</span>
               </div>
               <ProgressBar value={progress} />
-              {!isCompleted && (
+              {!isCompleted && completionHint && <p className="text-xs text-stone-400">{completionHint}</p>}
+              {!isCompleted && showManualProgress && (
                 <div className="flex flex-wrap items-center gap-2 pt-1">
                   <span className="text-xs text-stone-400">Qayergacha yetdingiz?</span>
                   {PROGRESS_STEPS.map((step) => (
@@ -154,7 +196,7 @@ export default function LearningMaterialPage() {
                 >
                   {isCompleted ? 'Qayta ochish' : isStarted ? 'Davom ettirish' : 'Boshlash'}
                 </button>
-                {isStarted && !isCompleted && (
+                {isStarted && !isCompleted && material.completionRule === 'MANUAL' && (
                   <button
                     type="button"
                     disabled={isBusy}
@@ -199,6 +241,15 @@ export default function LearningMaterialPage() {
               {material.isFavorite ? '♥ Sevimlilarda' : '♡ Sevimlilarga qo‘shish'}
             </button>
 
+            {material.downloadUrl && (
+              <a
+                href={resolveFileUrl(material.downloadUrl) ?? '#'}
+                className="rounded-lg border border-stone-200 px-4 py-2.5 text-sm font-medium text-stone-600 transition hover:bg-stone-50"
+              >
+                ⤓ Yuklab olish
+              </a>
+            )}
+
             <button
               type="button"
               onClick={() => setIsRecommendOpen(true)}
@@ -224,6 +275,18 @@ export default function LearningMaterialPage() {
           )}
         </div>
       </div>
+
+      {showViewer && material.hasAccess && (
+        <section className="flex flex-col gap-2">
+          <div className="flex items-center justify-between">
+            <p className="text-sm font-semibold text-stone-800">{material.contentFile?.fileName ?? material.title}</p>
+            <button type="button" onClick={() => setShowViewer(false)} className="text-sm text-stone-500 hover:text-stone-800">
+              Yopish ✕
+            </button>
+          </div>
+          <ContentViewer material={material} currentProgress={progress} onProgress={reportProgress} onFinished={handleFinished} />
+        </section>
+      )}
 
       <RecommendModal
         materialId={material.id}

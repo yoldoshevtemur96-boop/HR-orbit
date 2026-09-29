@@ -3,6 +3,7 @@ import { prisma } from '@/config/prisma';
 import { AppError } from '@/common/errors/AppError';
 import { sendDueReminders } from './assignment.service';
 import { syncRulesForEmployee } from './rule.service';
+import { signedFilePath } from '@/modules/files/file.service';
 
 interface AuthContext {
   userId: string;
@@ -12,13 +13,45 @@ interface AuthContext {
 
 // Learning & Development — xodim tomoni. Har bir amal joriy foydalanuvchiga
 // bog'langan xodim profili (Employee) nomidan bajariladi.
-async function getSelfEmployeeId(auth: AuthContext): Promise<string> {
+async function getSelfEmployee(auth: AuthContext) {
   const employee = await prisma.employee.findFirst({
     where: { userId: auth.userId, organizationId: auth.organizationId },
-    select: { id: true },
+    select: { id: true, departmentId: true, positionId: true, branchId: true },
   });
   if (!employee) throw AppError.notFound("Sizga bog'langan xodim profili topilmadi");
-  return employee.id;
+  return employee;
+}
+
+async function getSelfEmployeeId(auth: AuthContext): Promise<string> {
+  return (await getSelfEmployee(auth)).id;
+}
+
+type SelfEmployee = Awaited<ReturnType<typeof getSelfEmployee>>;
+
+// Xodim katalogda ko'radigan materiallar: nashr qilingan va
+// (a) unga tayinlangan — har doim, yoki
+// (b) ko'rinish muddati ichida va hammaga / uning bo'limi, lavozimi yoki filialiga ochiq.
+function visibleMaterialWhere(organizationId: string, employee: SelfEmployee): Prisma.LearningMaterialWhereInput {
+  const now = new Date();
+  const audience: Prisma.LearningMaterialWhereInput[] = [];
+  if (employee.departmentId) audience.push({ visibleDepartmentIds: { has: employee.departmentId } });
+  if (employee.positionId) audience.push({ visiblePositionIds: { has: employee.positionId } });
+  if (employee.branchId) audience.push({ visibleBranchIds: { has: employee.branchId } });
+
+  return {
+    organizationId,
+    status: 'PUBLISHED',
+    OR: [
+      { assignments: { some: { employeeId: employee.id, status: 'ACTIVE' } } },
+      {
+        AND: [
+          { OR: [{ availableFrom: null }, { availableFrom: { lte: now } }] },
+          { OR: [{ availableUntil: null }, { availableUntil: { gte: now } }] },
+          { OR: [{ visibility: 'ALL' }, ...(audience.length ? [{ visibility: 'AUDIENCE' as const, OR: audience }] : [])] },
+        ],
+      },
+    ],
+  };
 }
 
 const MATERIAL_LIST_SELECT = {
@@ -72,20 +105,23 @@ export async function listMaterials(
   auth: AuthContext,
   query: { search?: string; type?: LearningMaterialType; limit?: number },
 ) {
-  const employeeId = await getSelfEmployeeId(auth);
-  const where: Prisma.LearningMaterialWhereInput = { organizationId: auth.organizationId, status: 'PUBLISHED' };
-  if (query.type) where.type = query.type;
+  const employee = await getSelfEmployee(auth);
+  const employeeId = employee.id;
+  const and: Prisma.LearningMaterialWhereInput[] = [visibleMaterialWhere(auth.organizationId, employee)];
+  if (query.type) and.push({ type: query.type });
   if (query.search) {
     const search = query.search.trim();
-    where.OR = [
-      { title: { contains: search, mode: 'insensitive' } },
-      { description: { contains: search, mode: 'insensitive' } },
-      { author: { contains: search, mode: 'insensitive' } },
-      { tags: { has: search.toLowerCase() } },
-    ];
+    and.push({
+      OR: [
+        { title: { contains: search, mode: 'insensitive' } },
+        { description: { contains: search, mode: 'insensitive' } },
+        { author: { contains: search, mode: 'insensitive' } },
+        { tags: { has: search.toLowerCase() } },
+      ],
+    });
   }
   const materials = await prisma.learningMaterial.findMany({
-    where,
+    where: { AND: and },
     select: MATERIAL_LIST_SELECT,
     orderBy: { publishedAt: 'desc' },
     take: query.limit ?? 100,
@@ -94,10 +130,21 @@ export async function listMaterials(
 }
 
 export async function getMaterial(auth: AuthContext, materialId: string) {
-  const employeeId = await getSelfEmployeeId(auth);
+  const employee = await getSelfEmployee(auth);
+  const employeeId = employee.id;
   const material = await prisma.learningMaterial.findFirst({
-    where: { id: materialId, organizationId: auth.organizationId, status: 'PUBLISHED' },
-    select: { ...MATERIAL_LIST_SELECT, contentUrl: true },
+    where: { AND: [{ id: materialId }, visibleMaterialWhere(auth.organizationId, employee)] },
+    select: {
+      ...MATERIAL_LIST_SELECT,
+      contentUrl: true,
+      contentSource: true,
+      contentFileId: true,
+      displayMode: true,
+      completionRule: true,
+      allowDownload: true,
+      level: true,
+      language: true,
+    },
   });
   if (!material) throw AppError.notFound('Material topilmadi');
 
@@ -113,17 +160,35 @@ export async function getMaterial(auth: AuthContext, materialId: string) {
   const hasAccess =
     !material.requiresApproval || Boolean(decorated.assignment) || pendingRequest?.status === 'APPROVED' || Boolean(decorated.myProgress);
 
+  const contentFile =
+    material.contentSource === 'FILE' && material.contentFileId
+      ? await prisma.storedFile.findUnique({
+          where: { id: material.contentFileId },
+          select: { id: true, fileName: true, mimeType: true, sizeBytes: true },
+        })
+      : null;
+
   return {
     ...decorated,
-    contentUrl: hasAccess ? material.contentUrl : null,
+    contentSource: material.contentSource,
+    displayMode: material.displayMode,
+    completionRule: material.completionRule,
+    allowDownload: material.allowDownload,
+    level: material.level,
+    language: material.language,
+    // Fayl — vaqtinchalik imzoli havola (frontend api manziliga qo'shadi)
+    contentUrl: !hasAccess ? null : contentFile ? signedFilePath(contentFile.id) : material.contentUrl,
+    downloadUrl: hasAccess && contentFile && material.allowDownload ? signedFilePath(contentFile.id, true) : null,
+    contentFile: hasAccess && contentFile ? { fileName: contentFile.fileName, mimeType: contentFile.mimeType, sizeBytes: contentFile.sizeBytes } : null,
     hasAccess,
     request: pendingRequest,
   };
 }
 
 async function assertMaterialAccessible(auth: AuthContext, employeeId: string, materialId: string) {
+  const employee = await getSelfEmployee(auth);
   const material = await prisma.learningMaterial.findFirst({
-    where: { id: materialId, organizationId: auth.organizationId, status: 'PUBLISHED' },
+    where: { AND: [{ id: materialId }, visibleMaterialWhere(auth.organizationId, employee)] },
   });
   if (!material) throw AppError.notFound('Material topilmadi');
   if (!material.requiresApproval) return material;
@@ -147,21 +212,45 @@ export async function startMaterial(auth: AuthContext, materialId: string) {
   const employeeId = await getSelfEmployeeId(auth);
   const material = await assertMaterialAccessible(auth, employeeId, materialId);
 
+  // "Ochilganda tugatilgan" sharti — birinchi ochishdayoq yakunlanadi
+  const completeNow = material.completionRule === 'ON_OPEN';
+  const now = new Date();
   const progress = await prisma.learningProgress.upsert({
     where: { employeeId_materialId: { employeeId, materialId } },
-    create: { organizationId: auth.organizationId, employeeId, materialId },
-    update: { lastOpenedAt: new Date() },
+    create: {
+      organizationId: auth.organizationId,
+      employeeId,
+      materialId,
+      ...(completeNow ? { progress: 100, status: 'COMPLETED' as const, completedAt: now } : {}),
+    },
+    update: {
+      lastOpenedAt: now,
+      ...(completeNow ? { progress: 100, status: 'COMPLETED' as const, completedAt: now } : {}),
+    },
   });
-  return { progress, contentUrl: material.contentUrl };
+  return {
+    progress,
+    contentUrl: material.contentSource === 'FILE' && material.contentFileId ? signedFilePath(material.contentFileId) : material.contentUrl,
+  };
 }
 
 export async function updateProgress(auth: AuthContext, materialId: string, value: number) {
   const employeeId = await getSelfEmployeeId(auth);
   await assertMaterialAccessible(auth, employeeId, materialId);
 
-  const completed = value >= 100;
+  // Progress faqat oshadi, tugatilgan material qayta ko'rilganda ham
+  // "tugatilgan"ligicha qoladi (pleyer qayta ko'rishda kichik foiz yuboradi).
+  const existing = await prisma.learningProgress.findUnique({
+    where: { employeeId_materialId: { employeeId, materialId } },
+  });
+  if (existing?.status === 'COMPLETED') {
+    return prisma.learningProgress.update({ where: { id: existing.id }, data: { lastOpenedAt: new Date() } });
+  }
+
+  const next = Math.min(100, Math.max(existing?.progress ?? 0, value));
+  const completed = next >= 100;
   const data = {
-    progress: Math.min(100, Math.max(0, value)),
+    progress: next,
     status: completed ? ('COMPLETED' as const) : ('IN_PROGRESS' as const),
     completedAt: completed ? new Date() : null,
     lastOpenedAt: new Date(),
@@ -578,13 +667,14 @@ export async function recommendMaterial(
 // "Tavsiya etilgan" tabi: har bir material bir marta, kim(lar) tavsiya
 // qilgani va izohlari bilan — eng yangi tavsiya birinchi.
 export async function listMyRecommendations(auth: AuthContext) {
-  const employeeId = await getSelfEmployeeId(auth);
+  const employee = await getSelfEmployee(auth);
+  const employeeId = employee.id;
   const recommendations = await prisma.learningRecommendation.findMany({
     where: {
       organizationId: auth.organizationId,
       toEmployeeId: employeeId,
       dismissedAt: null,
-      material: { status: 'PUBLISHED' },
+      material: visibleMaterialWhere(auth.organizationId, employee),
     },
     orderBy: { updatedAt: 'desc' },
     include: { material: { select: MATERIAL_LIST_SELECT } },

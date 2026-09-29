@@ -33,7 +33,7 @@ const STATUS_TABS: { key: PublishStatus; label: string }[] = [
   { key: 'ARCHIVED', label: 'Arxiv' },
 ];
 
-const TYPES: ('' | LearningMaterialType)[] = ['', 'COURSE', 'VIDEO', 'AUDIO', 'ARTICLE', 'BOOK'];
+const TYPES: ('' | LearningMaterialType)[] = ['', 'COURSE', 'VIDEO', 'AUDIO', 'ARTICLE', 'BOOK', 'INSTRUCTION', 'PRESENTATION'];
 
 export default function CatalogAdminPage() {
   const [status, setStatus] = useState<PublishStatus>('PUBLISHED');
