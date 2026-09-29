@@ -59,15 +59,7 @@ export default function LearningAdminHubPage() {
                 ))}
               </ul>
             )}
-            <div className="mt-1 flex items-center justify-between">
-              <p className="text-xs text-stone-400">Jami: {data.catalog.total} ta material</p>
-              <Link
-                href="/learning-admin/catalog/new"
-                className="rounded-lg bg-accent px-3 py-1.5 text-xs font-semibold text-white transition hover:opacity-90"
-              >
-                + Material yaratish
-              </Link>
-            </div>
+            <p className="mt-1 text-xs text-stone-400">Jami: {data.catalog.total} ta material</p>
           </Card>
 
           <SummaryCard assignments={data.assignments} />
