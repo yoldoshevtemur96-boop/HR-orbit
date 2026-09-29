@@ -292,7 +292,7 @@ export async function getCatalogMaterial(auth: AuthContext, materialId: string) 
     : null;
   const [activeAssignments, activeRules] = await Promise.all([
     prisma.learningAssignment.count({ where: { organizationId: auth.organizationId, materialId, status: 'ACTIVE' } }),
-    prisma.learningAssignmentRule.count({ where: { organizationId: auth.organizationId, materialId, isActive: true } }),
+    prisma.learningAssignmentRule.count({ where: { organizationId: auth.organizationId, materialId, status: 'ACTIVE' } }),
   ]);
   return {
     ...material,
@@ -400,8 +400,8 @@ export async function updateMaterial(auth: AuthContext, materialId: string, inpu
         data: { status: 'CANCELLED', cancelledAt: new Date(), cancelledByUserId: auth.userId },
       }),
       prisma.learningAssignmentRule.updateMany({
-        where: { organizationId: auth.organizationId, materialId, isActive: true },
-        data: { isActive: false },
+        where: { organizationId: auth.organizationId, materialId, status: 'ACTIVE' },
+        data: { status: 'STOPPED' },
       }),
     ]);
     cancelledAssignments = cancelled.count;

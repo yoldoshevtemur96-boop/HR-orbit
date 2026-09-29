@@ -63,7 +63,7 @@ export async function getOverview(auth: AuthContext) {
     }),
     prisma.learningMaterial.count({ where: { organizationId, status: { not: 'ARCHIVED' } } }),
     prisma.learningEvent.count({ where: { organizationId, status: 'PUBLISHED', endsAt: { gte: now } } }),
-    prisma.learningAssignmentRule.count({ where: { organizationId, isActive: true } }),
+    prisma.learningAssignmentRule.count({ where: { organizationId, status: 'ACTIVE' } }),
   ]);
 
   return {

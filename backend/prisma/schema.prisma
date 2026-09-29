@@ -1035,6 +1035,16 @@ model LearningAssignment {
   @@map("learning_assignments")
 }
 
+// Qoida holati: Qoralama -> Faol -> (To'xtatilgan | Bajarildi) -> Arxiv.
+// Bajarildi — bir martalik qoida ishlab bo'lgach.
+enum LearningRuleStatus {
+  DRAFT
+  ACTIVE
+  STOPPED
+  COMPLETED
+  ARCHIVED
+}
+
 enum LearningRuleType {
   ONE_TIME // yaratilganda bir marta ishlaydi
   PERMANENT // doimiy: yangi mos xodimlarga tayinlaydi, shartdan chiqqanlarnikini bekor qiladi
@@ -1047,6 +1057,8 @@ model LearningAssignmentRule {
   id                        String                   @id @default(cuid())
   organizationId            String
   name                      String
+  description               String?
+  tag                       String? // guruhlash va filtrlash uchun
   materialId                String
   type                      LearningRuleType
   allOrganization           Boolean                  @default(false)
@@ -1061,7 +1073,7 @@ model LearningAssignmentRule {
   dueDate                   DateTime? // faqat ONE_TIME uchun
   skipIfCompletedWithinDays Int?
   cancelOutOfScope          Boolean                  @default(true)
-  isActive                  Boolean                  @default(true)
+  status                    LearningRuleStatus       @default(DRAFT)
   createdByUserId           String?
   lastRunAt                 DateTime?
   createdAt                 DateTime                 @default(now())
@@ -1071,7 +1083,7 @@ model LearningAssignmentRule {
   material     LearningMaterial     @relation(fields: [materialId], references: [id], onDelete: Cascade)
   assignments  LearningAssignment[]
 
-  @@index([organizationId, isActive, type])
+  @@index([organizationId, status, type])
   @@map("learning_assignment_rules")
 }
 

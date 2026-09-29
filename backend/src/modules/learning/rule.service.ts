@@ -11,7 +11,7 @@ interface AuthContext {
 
 // L&D admin — qoidalar orqali avtomatik tayinlash (faqat HR).
 //
-// ONE_TIME  — yaratilganda bir marta ishlaydi, keyin yakunlanadi (isActive=false).
+// ONE_TIME  — yaratilganda bir marta ishlaydi, keyin "Bajarildi" holatiga o'tadi.
 // PERMANENT — doimiy: shartga mos yangi xodimlarga tayinlaydi, shartdan
 //             chiqqanlarning tugallanmagan tayinlovini bekor qiladi.
 //
@@ -29,6 +29,8 @@ function assertHr(auth: AuthContext) {
 
 export interface RuleInput {
   name: string;
+  description?: string | null;
+  tag?: string | null;
   materialId: string;
   type: LearningRuleType;
   allOrganization?: boolean;
@@ -91,7 +93,7 @@ export async function runRule(ruleId: string, onlyEmployeeId?: string) {
     where: { id: ruleId },
     include: { material: { select: { id: true, title: true, status: true } } },
   });
-  if (!rule || !rule.isActive || rule.material.status !== 'PUBLISHED') return { assigned: 0, cancelled: 0 };
+  if (!rule || rule.status !== 'ACTIVE' || rule.material.status !== 'PUBLISHED') return { assigned: 0, cancelled: 0 };
 
   const audience = await resolveRuleAudience(rule, true, onlyEmployeeId);
   const split = await filterCandidates(rule.organizationId, rule.materialId, audience, rule.skipIfCompletedWithinDays);
@@ -117,7 +119,8 @@ export async function runRule(ruleId: string, onlyEmployeeId?: string) {
 
   await prisma.learningAssignmentRule.update({
     where: { id: rule.id },
-    data: { lastRunAt: new Date(), ...(rule.type === 'ONE_TIME' && !onlyEmployeeId ? { isActive: false } : {}) },
+    // Bir martalik qoida to'liq ishlagach — Bajarildi
+    data: { lastRunAt: new Date(), ...(rule.type === 'ONE_TIME' && !onlyEmployeeId ? { status: 'COMPLETED' as const } : {}) },
   });
   return { assigned, cancelled };
 }
@@ -155,7 +158,7 @@ async function cancelOutOfScopeAssignments(rule: LearningAssignmentRule, onlyEmp
 // barcha faol doimiy qoidalarni faqat shu xodim uchun ishga tushiradi.
 export async function syncRulesForEmployee(organizationId: string, employeeId: string) {
   const rules = await prisma.learningAssignmentRule.findMany({
-    where: { organizationId, isActive: true, type: 'PERMANENT' },
+    where: { organizationId, status: 'ACTIVE', type: 'PERMANENT' },
     select: { id: true },
   });
   for (const rule of rules) {
@@ -187,6 +190,8 @@ async function validateRuleInput(auth: AuthContext, input: RuleInput) {
 function ruleData(input: RuleInput) {
   return {
     name: input.name.trim(),
+    description: input.description?.trim() || null,
+    tag: input.tag?.trim().toLowerCase().replace(/^#/, '') || null,
     materialId: input.materialId,
     type: input.type,
     allOrganization: Boolean(input.allOrganization),
@@ -224,14 +229,23 @@ export async function previewRule(auth: AuthContext, input: RuleInput) {
   };
 }
 
-export async function createRule(auth: AuthContext, input: RuleInput) {
+// Yangi qoida: activate=false — qoralama; true — darhol faollashtiriladi va ishlaydi
+export async function createRule(auth: AuthContext, input: RuleInput, activate = true) {
   assertHr(auth);
   await validateRuleInput(auth, input);
   const rule = await prisma.learningAssignmentRule.create({
-    data: { organizationId: auth.organizationId, createdByUserId: auth.userId, ...ruleData(input) },
+    data: {
+      organizationId: auth.organizationId,
+      createdByUserId: auth.userId,
+      ...ruleData(input),
+      status: activate ? 'ACTIVE' : 'DRAFT',
+    },
   });
+  if (!activate) return { rule, assigned: 0, cancelled: 0 };
   const result = await runRule(rule.id);
-  return { rule, ...result };
+  // Bir martalik qoida ishlagach "Bajarildi"ga o'tadi — yangilangan holatni qaytaramiz
+  const fresh = await prisma.learningAssignmentRule.findUniqueOrThrow({ where: { id: rule.id } });
+  return { rule: fresh, ...result };
 }
 
 async function getRule(auth: AuthContext, ruleId: string) {
@@ -241,43 +255,87 @@ async function getRule(auth: AuthContext, ruleId: string) {
   return rule;
 }
 
+// Tahrirlash formasi uchun
+export async function getRuleDetail(auth: AuthContext, ruleId: string) {
+  return getRule(auth, ruleId);
+}
+
+// Faqat qoralama yoki to'xtatilgan qoida tahrirlanadi (Pulsdagi kabi:
+// faol qoidani avval to'xtatish kerak)
+export async function updateRule(auth: AuthContext, ruleId: string, input: RuleInput) {
+  const rule = await getRule(auth, ruleId);
+  if (rule.status !== 'DRAFT' && rule.status !== 'STOPPED') {
+    throw AppError.badRequest("Faqat qoralama yoki to'xtatilgan qoidani tahrirlash mumkin — avval to'xtating");
+  }
+  await validateRuleInput(auth, input);
+  return prisma.learningAssignmentRule.update({ where: { id: rule.id }, data: ruleData(input) });
+}
+
 export async function runRuleNow(auth: AuthContext, ruleId: string) {
   const rule = await getRule(auth, ruleId);
-  if (!rule.isActive) throw AppError.badRequest("Qoida o'chirilgan — avval yoqing");
+  if (rule.status !== 'ACTIVE') throw AppError.badRequest('Qoida faol emas — avval faollashtiring');
   return runRule(rule.id);
 }
 
-// Qoidani to'xtatish. cancelAssignments=true bo'lsa — shu qoida bergan
-// tugallanmagan tayinlovlar ham bekor qilinadi.
-export async function deactivateRule(auth: AuthContext, ruleId: string, cancelAssignments: boolean) {
+async function cancelRuleAssignments(ruleId: string, materialId: string, userId: string) {
+  const active = await prisma.learningAssignment.findMany({
+    where: { ruleId, status: 'ACTIVE' },
+    select: { id: true, employeeId: true },
+  });
+  if (active.length === 0) return 0;
+  const completed = await prisma.learningProgress.findMany({
+    where: { materialId, employeeId: { in: active.map((a) => a.employeeId) }, status: 'COMPLETED' },
+    select: { employeeId: true },
+  });
+  const completedIds = new Set(completed.map((c) => c.employeeId));
+  const result = await prisma.learningAssignment.updateMany({
+    where: { id: { in: active.filter((a) => !completedIds.has(a.employeeId)).map((a) => a.id) } },
+    data: { status: 'CANCELLED', cancelledAt: new Date(), cancelledByUserId: userId },
+  });
+  return result.count;
+}
+
+// Faollashtirish: qoralama yoki to'xtatilgan -> Faol, darhol ishga tushadi.
+// Bir martalik qoida ishlagach o'zi "Bajarildi"ga o'tadi.
+export async function activateRule(auth: AuthContext, ruleId: string) {
   const rule = await getRule(auth, ruleId);
-  let cancelled = 0;
-  if (cancelAssignments) {
-    const active = await prisma.learningAssignment.findMany({
-      where: { ruleId: rule.id, status: 'ACTIVE' },
-      select: { id: true, employeeId: true },
-    });
-    const completed = await prisma.learningProgress.findMany({
-      where: { materialId: rule.materialId, employeeId: { in: active.map((a) => a.employeeId) }, status: 'COMPLETED' },
-      select: { employeeId: true },
-    });
-    const completedIds = new Set(completed.map((c) => c.employeeId));
-    const result = await prisma.learningAssignment.updateMany({
-      where: { id: { in: active.filter((a) => !completedIds.has(a.employeeId)).map((a) => a.id) } },
-      data: { status: 'CANCELLED', cancelledAt: new Date(), cancelledByUserId: auth.userId },
-    });
-    cancelled = result.count;
+  if (rule.status !== 'DRAFT' && rule.status !== 'STOPPED') {
+    throw AppError.badRequest('Bu holatdagi qoidani faollashtirib bo‘lmaydi');
   }
-  await prisma.learningAssignmentRule.update({ where: { id: rule.id }, data: { isActive: false } });
+  await validateRuleInput(auth, { ...rule, description: rule.description, tag: rule.tag });
+  await prisma.learningAssignmentRule.update({ where: { id: rule.id }, data: { status: 'ACTIVE' } });
+  return runRule(rule.id);
+}
+
+// To'xtatish. cancelAssignments=true — shu qoida bergan tugallanmagan
+// tayinlovlar ham bekor qilinadi.
+export async function stopRule(auth: AuthContext, ruleId: string, cancelAssignments: boolean) {
+  const rule = await getRule(auth, ruleId);
+  if (rule.status !== 'ACTIVE') throw AppError.badRequest('Faqat faol qoidani to‘xtatish mumkin');
+  const cancelled = cancelAssignments ? await cancelRuleAssignments(rule.id, rule.materialId, auth.userId) : 0;
+  await prisma.learningAssignmentRule.update({ where: { id: rule.id }, data: { status: 'STOPPED' } });
   return { cancelled };
 }
 
-export async function activateRule(auth: AuthContext, ruleId: string) {
+// Nusxa — har doim qoralama sifatida
+export async function copyRule(auth: AuthContext, ruleId: string) {
   const rule = await getRule(auth, ruleId);
-  if (rule.type === 'ONE_TIME') throw AppError.badRequest('Bir martalik qoidani qayta yoqib bo‘lmaydi — yangisini yarating');
-  await prisma.learningAssignmentRule.update({ where: { id: rule.id }, data: { isActive: true } });
-  return runRule(rule.id);
+  const { id: _id, createdAt: _c, updatedAt: _u, lastRunAt: _l, status: _s, createdByUserId: _cb, ...rest } = rule;
+  return prisma.learningAssignmentRule.create({
+    data: { ...rest, name: `${rule.name} (nusxa)`, status: 'DRAFT', createdByUserId: auth.userId },
+  });
 }
+
+// Arxivlash: faol bo'lsa avval to'xtatiladi; tayinlovlarni bekor qilish ixtiyoriy
+export async function archiveRule(auth: AuthContext, ruleId: string, cancelAssignments: boolean) {
+  const rule = await getRule(auth, ruleId);
+  if (rule.status === 'ARCHIVED') throw AppError.badRequest('Qoida allaqachon arxivda');
+  const cancelled = cancelAssignments ? await cancelRuleAssignments(rule.id, rule.materialId, auth.userId) : 0;
+  await prisma.learningAssignmentRule.update({ where: { id: rule.id }, data: { status: 'ARCHIVED' } });
+  return { cancelled };
+}
+
+const STATUS_ORDER = { ACTIVE: 0, DRAFT: 1, STOPPED: 2, COMPLETED: 3, ARCHIVED: 4 } as const;
 
 export async function listRules(auth: AuthContext) {
   assertHr(auth);
@@ -287,7 +345,7 @@ export async function listRules(auth: AuthContext) {
   const stale = await prisma.learningAssignmentRule.findMany({
     where: {
       organizationId: auth.organizationId,
-      isActive: true,
+      status: 'ACTIVE',
       type: 'PERMANENT',
       OR: [{ lastRunAt: null }, { lastRunAt: { lt: new Date(Date.now() - STALE_AFTER_MS) } }],
     },
@@ -298,16 +356,25 @@ export async function listRules(auth: AuthContext) {
   const rules = await prisma.learningAssignmentRule.findMany({
     where: { organizationId: auth.organizationId },
     include: { material: { select: { id: true, title: true, type: true } } },
-    orderBy: [{ isActive: 'desc' }, { createdAt: 'desc' }],
+    orderBy: { createdAt: 'desc' },
   });
+  rules.sort((a, b) => STATUS_ORDER[a.status] - STATUS_ORDER[b.status]);
 
-  const counts = await prisma.learningAssignment.groupBy({
-    by: ['ruleId', 'status'],
+  // Bajarilish: qoida bergan (bekor qilinmagan) tayinlovlardan nechtasi tugatilgan
+  const assignments = await prisma.learningAssignment.findMany({
     where: { organizationId: auth.organizationId, ruleId: { in: rules.map((r) => r.id) } },
-    _count: { _all: true },
+    select: { ruleId: true, status: true, employeeId: true, materialId: true },
   });
-  const countFor = (ruleId: string, status: 'ACTIVE' | 'CANCELLED') =>
-    counts.find((c) => c.ruleId === ruleId && c.status === status)?._count._all ?? 0;
+  const completedRows = await prisma.learningProgress.findMany({
+    where: {
+      organizationId: auth.organizationId,
+      status: 'COMPLETED',
+      employeeId: { in: [...new Set(assignments.map((a) => a.employeeId))] },
+      materialId: { in: [...new Set(assignments.map((a) => a.materialId))] },
+    },
+    select: { employeeId: true, materialId: true },
+  });
+  const completedKeys = new Set(completedRows.map((c) => `${c.employeeId}:${c.materialId}`));
 
   const [departments, positions, branches] = await Promise.all([
     prisma.department.findMany({ where: { organizationId: auth.organizationId }, select: { id: true, name: true } }),
@@ -317,16 +384,23 @@ export async function listRules(auth: AuthContext) {
   const nameOf = (list: { id: string; name: string }[], ids: string[]) =>
     ids.map((id) => list.find((x) => x.id === id)?.name).filter(Boolean) as string[];
 
-  return rules.map((r) => ({
-    ...r,
-    audience: {
-      allOrganization: r.allOrganization,
-      departments: nameOf(departments, r.departmentIds),
-      positions: nameOf(positions, r.positionIds),
-      branches: nameOf(branches, r.branchIds),
-      hiredWithinDays: r.hiredWithinDays,
-    },
-    activeAssignments: countFor(r.id, 'ACTIVE'),
-    cancelledAssignments: countFor(r.id, 'CANCELLED'),
-  }));
+  return rules.map((r) => {
+    const own = assignments.filter((a) => a.ruleId === r.id);
+    const live = own.filter((a) => a.status === 'ACTIVE');
+    const completed = live.filter((a) => completedKeys.has(`${a.employeeId}:${a.materialId}`)).length;
+    return {
+      ...r,
+      audience: {
+        allOrganization: r.allOrganization,
+        departments: nameOf(departments, r.departmentIds),
+        positions: nameOf(positions, r.positionIds),
+        branches: nameOf(branches, r.branchIds),
+        hiredWithinDays: r.hiredWithinDays,
+      },
+      activeAssignments: live.length - completed,
+      completedAssignments: completed,
+      cancelledAssignments: own.filter((a) => a.status === 'CANCELLED').length,
+      completionPercent: live.length ? Math.round((completed / live.length) * 100) : 0,
+    };
+  });
 }

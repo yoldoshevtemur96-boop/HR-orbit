@@ -95,6 +95,8 @@ learningAdminRouter.patch('/assignments/:id', async (req, res) => {
 const ruleSchema = z
   .object({
     name: z.string().trim().min(1, 'Qoida nomini kiriting').max(200),
+    description: z.string().trim().max(2000).nullable().optional(),
+    tag: z.string().trim().max(60).nullable().optional(),
     materialId: z.string().min(1),
     type: z.enum(['ONE_TIME', 'PERMANENT']),
     allOrganization: z.boolean().optional(),
@@ -121,24 +123,46 @@ learningAdminRouter.post('/rules/preview', async (req, res) => {
   res.json(await ruleService.previewRule(req.auth!, input));
 });
 
+const activateQuery = z.object({ activate: z.enum(['0', '1']).default('1') });
+
+// ?activate=0 — qoralama sifatida saqlash
 learningAdminRouter.post('/rules', async (req, res) => {
   const input = ruleSchema.parse(req.body);
-  res.status(201).json(await ruleService.createRule(req.auth!, input));
+  const { activate } = activateQuery.parse(req.query);
+  res.status(201).json(await ruleService.createRule(req.auth!, input, activate === '1'));
+});
+
+learningAdminRouter.get('/rules/:id', async (req, res) => {
+  res.json(await ruleService.getRuleDetail(req.auth!, req.params.id));
+});
+
+learningAdminRouter.put('/rules/:id', async (req, res) => {
+  const input = ruleSchema.parse(req.body);
+  res.json(await ruleService.updateRule(req.auth!, req.params.id, input));
 });
 
 learningAdminRouter.post('/rules/:id/run', async (req, res) => {
   res.json(await ruleService.runRuleNow(req.auth!, req.params.id));
 });
 
-const deactivateSchema = z.object({ cancelAssignments: z.boolean().default(false) });
-
-learningAdminRouter.post('/rules/:id/deactivate', async (req, res) => {
-  const { cancelAssignments } = deactivateSchema.parse(req.body ?? {});
-  res.json(await ruleService.deactivateRule(req.auth!, req.params.id, cancelAssignments));
-});
-
 learningAdminRouter.post('/rules/:id/activate', async (req, res) => {
   res.json(await ruleService.activateRule(req.auth!, req.params.id));
+});
+
+const cancelSchema = z.object({ cancelAssignments: z.boolean().default(false) });
+
+learningAdminRouter.post('/rules/:id/stop', async (req, res) => {
+  const { cancelAssignments } = cancelSchema.parse(req.body ?? {});
+  res.json(await ruleService.stopRule(req.auth!, req.params.id, cancelAssignments));
+});
+
+learningAdminRouter.post('/rules/:id/copy', async (req, res) => {
+  res.status(201).json(await ruleService.copyRule(req.auth!, req.params.id));
+});
+
+learningAdminRouter.post('/rules/:id/archive', async (req, res) => {
+  const { cancelAssignments } = cancelSchema.parse(req.body ?? {});
+  res.json(await ruleService.archiveRule(req.auth!, req.params.id, cancelAssignments));
 });
 
 // ---------------------------------------------------------------------------

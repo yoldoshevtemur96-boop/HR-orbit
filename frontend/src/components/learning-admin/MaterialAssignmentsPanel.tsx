@@ -9,6 +9,7 @@ import {
   ASSIGNMENT_SOURCE_LABEL,
   ASSIGNMENT_STATE_LABEL,
   ASSIGNMENT_STATE_STYLE,
+  RULE_STATUS_LABEL,
   RULE_TYPE_LABEL,
   type AssignmentList,
   type AssignmentRuleRow,
@@ -80,7 +81,7 @@ export function MaterialAssignmentsPanel({ materialId, isPublished }: { material
               <span>
                 <span className="font-medium text-stone-800">{r.name}</span>{' '}
                 <span className="text-xs text-stone-400">
-                  · {RULE_TYPE_LABEL[r.type]} · {r.isActive ? 'faol' : 'to‘xtatilgan'} · faol tayinlovlar: {r.activeAssignments}
+                  · {RULE_TYPE_LABEL[r.type]} · {RULE_STATUS_LABEL[r.status].toLowerCase()} · bajarilish: {r.completionPercent}%
                 </span>
               </span>
               <Link href="/learning-admin/rules" className="text-sm text-stone-500 hover:text-accent">

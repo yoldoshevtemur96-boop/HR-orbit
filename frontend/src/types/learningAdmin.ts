@@ -110,11 +110,31 @@ export const RULE_TYPE_LABEL: Record<RuleType, string> = {
   PERMANENT: 'Doimiy',
 };
 
+export type RuleStatus = 'DRAFT' | 'ACTIVE' | 'STOPPED' | 'COMPLETED' | 'ARCHIVED';
+
+export const RULE_STATUS_LABEL: Record<RuleStatus, string> = {
+  DRAFT: 'Qoralama',
+  ACTIVE: 'Faol',
+  STOPPED: "To'xtatilgan",
+  COMPLETED: 'Bajarildi',
+  ARCHIVED: 'Arxivda',
+};
+
+export const RULE_STATUS_STYLE: Record<RuleStatus, string> = {
+  DRAFT: 'bg-stone-100 text-stone-600',
+  ACTIVE: 'bg-emerald-50 text-emerald-700',
+  STOPPED: 'bg-amber-50 text-amber-700',
+  COMPLETED: 'bg-sky-50 text-sky-700',
+  ARCHIVED: 'bg-stone-100 text-stone-400',
+};
+
 export interface AssignmentRuleRow {
   id: string;
   name: string;
+  description: string | null;
+  tag: string | null;
   type: RuleType;
-  isActive: boolean;
+  status: RuleStatus;
   material: { id: string; title: string; type: LearningMaterialType };
   audience: {
     allOrganization: boolean;
@@ -132,5 +152,7 @@ export interface AssignmentRuleRow {
   lastRunAt: string | null;
   createdAt: string;
   activeAssignments: number;
+  completedAssignments: number;
   cancelledAssignments: number;
+  completionPercent: number;
 }
