@@ -46,6 +46,7 @@ model Organization {
   learningMaterials          LearningMaterial[]
   learningProgress           LearningProgress[]
   learningFavorites          LearningFavorite[]
+  learningRecommendations    LearningRecommendation[]
   learningAssignments        LearningAssignment[]
   learningEvents             LearningEvent[]
   learningEventRegistrations LearningEventRegistration[]
@@ -495,6 +496,7 @@ enum NotificationType {
   DOCUMENT_AVAILABLE
   LEARNING_ASSIGNED
   LEARNING_REMINDER
+  LEARNING_RECOMMENDED
 }
 
 model Notification {
@@ -830,12 +832,13 @@ model LearningMaterial {
   createdAt        DateTime              @default(now())
   updatedAt        DateTime              @updatedAt
 
-  organization  Organization              @relation(fields: [organizationId], references: [id], onDelete: Cascade)
-  progress      LearningProgress[]
-  favorites     LearningFavorite[]
-  assignments   LearningAssignment[]
-  requests      LearningRequest[]
-  goalMaterials DevelopmentGoalMaterial[]
+  organization    Organization              @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+  progress        LearningProgress[]
+  favorites       LearningFavorite[]
+  recommendations LearningRecommendation[]
+  assignments     LearningAssignment[]
+  requests        LearningRequest[]
+  goalMaterials   DevelopmentGoalMaterial[]
 
   @@index([organizationId, status, publishedAt])
   @@map("learning_materials")
@@ -898,6 +901,27 @@ enum LearningAssignmentSource {
 enum LearningAssignmentStatus {
   ACTIVE
   CANCELLED
+}
+
+// Hamkasbdan hamkasbga material tavsiyasi ("Tavsiya etilgan" tabi).
+// Bir xil tavsiya takror yuborilsa — izoh yangilanadi, yashirilgani qaytadi.
+model LearningRecommendation {
+  id             String    @id @default(cuid())
+  organizationId String
+  materialId     String
+  fromEmployeeId String
+  toEmployeeId   String
+  comment        String?
+  dismissedAt    DateTime? // qabul qiluvchi ro'yxatidan olib tashlagan
+  createdAt      DateTime  @default(now())
+  updatedAt      DateTime  @updatedAt
+
+  organization Organization     @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+  material     LearningMaterial @relation(fields: [materialId], references: [id], onDelete: Cascade)
+
+  @@unique([fromEmployeeId, toEmployeeId, materialId])
+  @@index([organizationId, toEmployeeId])
+  @@map("learning_recommendations")
 }
 
 // HR yoki rahbar xodimga materialni tayinlaydi. Bajarilganlik

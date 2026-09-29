@@ -5,7 +5,8 @@ export type NotificationType =
   | 'HR_MESSAGE'
   | 'DOCUMENT_AVAILABLE'
   | 'LEARNING_ASSIGNED'
-  | 'LEARNING_REMINDER';
+  | 'LEARNING_REMINDER'
+  | 'LEARNING_RECOMMENDED';
 
 export interface Notification {
   id: string;

@@ -78,7 +78,19 @@ export interface DevelopmentGoal {
   completedCount: number;
 }
 
+export interface LearningRecommendedMaterial extends LearningMaterial {
+  recommendedBy: { fullName: string; comment: string | null; createdAt: string }[];
+}
+
+export interface Colleague {
+  id: string;
+  fullName: string;
+  department: string | null;
+  position: string | null;
+}
+
 export interface LearningSummary {
+  recommended: number;
   favorites: number;
   pendingRequests: number;
   activeGoals: number;

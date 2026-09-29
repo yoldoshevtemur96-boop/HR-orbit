@@ -16,6 +16,7 @@ import { LEARNING_ADMIN_ROLES } from '@/lib/learningAdmin';
 import { ASSIGNMENT_REASON_LABEL } from '@/types/learningAdmin';
 import type { LearningMaterialDetail } from '@/types/learning';
 import Link from 'next/link';
+import { RecommendModal } from '@/components/learning/RecommendModal';
 
 const PROGRESS_STEPS = [25, 50, 75];
 
@@ -26,6 +27,7 @@ export default function LearningMaterialPage() {
   const [material, setMaterial] = useState<LearningMaterialDetail | null>(null);
   const [error, setError] = useState<string | null>(null);
   const [isBusy, setIsBusy] = useState(false);
+  const [isRecommendOpen, setIsRecommendOpen] = useState(false);
 
   const load = useCallback(() => {
     api
@@ -197,6 +199,14 @@ export default function LearningMaterialPage() {
               {material.isFavorite ? '♥ Sevimlilarda' : '♡ Sevimlilarga qo‘shish'}
             </button>
 
+            <button
+              type="button"
+              onClick={() => setIsRecommendOpen(true)}
+              className="rounded-lg border border-stone-200 px-4 py-2.5 text-sm font-medium text-stone-600 transition hover:bg-stone-50"
+            >
+              Hamkasbga tavsiya qilish
+            </button>
+
             {canAssign && (
               <Link
                 href={`/learning-admin/assignments/new?materialId=${material.id}`}
@@ -214,6 +224,13 @@ export default function LearningMaterialPage() {
           )}
         </div>
       </div>
+
+      <RecommendModal
+        materialId={material.id}
+        materialTitle={material.title}
+        isOpen={isRecommendOpen}
+        onClose={() => setIsRecommendOpen(false)}
+      />
     </div>
   );
 }

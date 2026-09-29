@@ -13,6 +13,7 @@ const TYPE_LABEL: Record<string, string> = {
   DOCUMENT_AVAILABLE: 'Hujjat tayyor',
   LEARNING_ASSIGNED: "Yangi o'quv material",
   LEARNING_REMINDER: 'Muddat eslatmasi',
+  LEARNING_RECOMMENDED: 'Hamkasb tavsiyasi',
 };
 
 const POLL_INTERVAL_MS = 60_000;

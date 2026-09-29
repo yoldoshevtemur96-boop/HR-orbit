@@ -470,13 +470,152 @@ export async function getSummary(auth: AuthContext) {
   // Muddat eslatmalari shu yerda yuboriladi (cron o'rniga) — xato bo'lsa
   // ham bosh sahifa ochilaverishi kerak.
   await sendDueReminders(organizationId, employeeId, auth.userId).catch(() => undefined);
-  const [favorites, pendingRequests, activeGoals, upcomingEvents, inProgress, assigned] = await Promise.all([
+  const [favorites, pendingRequests, activeGoals, upcomingEvents, inProgress, assigned, recommended] = await Promise.all([
     prisma.learningFavorite.count({ where: { organizationId, employeeId, material: { status: 'PUBLISHED' } } }),
     prisma.learningRequest.count({ where: { organizationId, employeeId, status: 'PENDING' } }),
     prisma.developmentGoal.count({ where: { organizationId, employeeId, status: 'ACTIVE' } }),
     prisma.learningEvent.count({ where: { organizationId, status: 'PUBLISHED', endsAt: { gte: new Date() } } }),
     prisma.learningProgress.count({ where: { organizationId, employeeId, status: 'IN_PROGRESS' } }),
     prisma.learningAssignment.count({ where: { organizationId, employeeId, status: 'ACTIVE' } }),
+    prisma.learningRecommendation
+      .findMany({
+        where: { organizationId, toEmployeeId: employeeId, dismissedAt: null, material: { status: 'PUBLISHED' } },
+        distinct: ['materialId'],
+        select: { materialId: true },
+      })
+      .then((rows) => rows.length),
   ]);
-  return { favorites, pendingRequests, activeGoals, upcomingEvents, inProgress, assigned };
+  return { favorites, pendingRequests, activeGoals, upcomingEvents, inProgress, assigned, recommended };
+}
+
+// ---------------------------------------------------------------------------
+// Hamkasblar tavsiyasi
+// ---------------------------------------------------------------------------
+
+const ACTIVE_EMPLOYMENT = ['ACTIVE', 'PROBATION', 'ON_LEAVE'] as const;
+
+export async function listColleagues(auth: AuthContext, search?: string) {
+  const employeeId = await getSelfEmployeeId(auth);
+  const where: Prisma.EmployeeWhereInput = {
+    organizationId: auth.organizationId,
+    id: { not: employeeId },
+    status: { in: [...ACTIVE_EMPLOYMENT] },
+  };
+  if (search?.trim()) {
+    where.OR = [
+      { fullName: { contains: search.trim(), mode: 'insensitive' } },
+      { employeeCode: { contains: search.trim(), mode: 'insensitive' } },
+    ];
+  }
+  const employees = await prisma.employee.findMany({
+    where,
+    select: { id: true, fullName: true, department: { select: { name: true } }, position: { select: { name: true } } },
+    orderBy: { fullName: 'asc' },
+    take: 50,
+  });
+  return employees.map((e) => ({
+    id: e.id,
+    fullName: e.fullName,
+    department: e.department?.name ?? null,
+    position: e.position?.name ?? null,
+  }));
+}
+
+export async function recommendMaterial(
+  auth: AuthContext,
+  materialId: string,
+  input: { employeeIds: string[]; comment?: string },
+) {
+  const fromEmployeeId = await getSelfEmployeeId(auth);
+  const material = await prisma.learningMaterial.findFirst({
+    where: { id: materialId, organizationId: auth.organizationId, status: 'PUBLISHED' },
+    select: { id: true, title: true },
+  });
+  if (!material) throw AppError.notFound('Material topilmadi');
+
+  const [sender, recipients] = await Promise.all([
+    prisma.employee.findUnique({ where: { id: fromEmployeeId }, select: { fullName: true } }),
+    prisma.employee.findMany({
+      where: {
+        organizationId: auth.organizationId,
+        id: { in: input.employeeIds, not: fromEmployeeId },
+        status: { in: [...ACTIVE_EMPLOYMENT] },
+      },
+      select: { id: true, userId: true },
+    }),
+  ]);
+  if (recipients.length === 0) throw AppError.badRequest('Kamida bitta hamkasbni tanlang');
+
+  const comment = input.comment?.trim() || null;
+  await prisma.$transaction([
+    ...recipients.map((r) =>
+      prisma.learningRecommendation.upsert({
+        where: { fromEmployeeId_toEmployeeId_materialId: { fromEmployeeId, toEmployeeId: r.id, materialId } },
+        create: { organizationId: auth.organizationId, materialId, fromEmployeeId, toEmployeeId: r.id, comment },
+        update: { comment, dismissedAt: null },
+      }),
+    ),
+    prisma.notification.createMany({
+      data: recipients
+        .filter((r) => r.userId)
+        .map((r) => ({
+          organizationId: auth.organizationId,
+          userId: r.userId!,
+          type: 'LEARNING_RECOMMENDED' as const,
+          message: `${sender?.fullName ?? 'Hamkasbingiz'} sizga "${material.title}" materialini tavsiya qildi`,
+          entityType: 'LearningMaterial',
+          entityId: materialId,
+        })),
+    }),
+  ]);
+  return { recommendedCount: recipients.length };
+}
+
+// "Tavsiya etilgan" tabi: har bir material bir marta, kim(lar) tavsiya
+// qilgani va izohlari bilan — eng yangi tavsiya birinchi.
+export async function listMyRecommendations(auth: AuthContext) {
+  const employeeId = await getSelfEmployeeId(auth);
+  const recommendations = await prisma.learningRecommendation.findMany({
+    where: {
+      organizationId: auth.organizationId,
+      toEmployeeId: employeeId,
+      dismissedAt: null,
+      material: { status: 'PUBLISHED' },
+    },
+    orderBy: { updatedAt: 'desc' },
+    include: { material: { select: MATERIAL_LIST_SELECT } },
+  });
+
+  const senders = await prisma.employee.findMany({
+    where: { id: { in: [...new Set(recommendations.map((r) => r.fromEmployeeId))] } },
+    select: { id: true, fullName: true },
+  });
+  const senderName = new Map(senders.map((s) => [s.id, s.fullName]));
+
+  const byMaterial = new Map<
+    string,
+    { material: MaterialListItem; recommendedBy: { fullName: string; comment: string | null; createdAt: Date }[] }
+  >();
+  for (const r of recommendations) {
+    const entry = byMaterial.get(r.materialId) ?? { material: r.material, recommendedBy: [] };
+    entry.recommendedBy.push({ fullName: senderName.get(r.fromEmployeeId) ?? '—', comment: r.comment, createdAt: r.updatedAt });
+    byMaterial.set(r.materialId, entry);
+  }
+
+  const entries = [...byMaterial.values()];
+  const decorated = await decorateMaterials(
+    auth.organizationId,
+    employeeId,
+    entries.map((e) => e.material),
+  );
+  return decorated.map((m, i) => ({ ...m, recommendedBy: entries[i].recommendedBy }));
+}
+
+export async function dismissRecommendations(auth: AuthContext, materialId: string) {
+  const employeeId = await getSelfEmployeeId(auth);
+  const result = await prisma.learningRecommendation.updateMany({
+    where: { organizationId: auth.organizationId, toEmployeeId: employeeId, materialId, dismissedAt: null },
+    data: { dismissedAt: new Date() },
+  });
+  return { dismissed: result.count };
 }

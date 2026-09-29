@@ -315,6 +315,41 @@ export async function seedLearning(prisma: PrismaClient, organizationId: string)
   }
 
   console.log(`Learning: ${materials.length} ta material, 5 ta tadbir, ${demoUsers.length} ta demo xodim uchun progress yaratildi`);
+  await seedLearningRecommendations(prisma, organizationId);
+}
+
+// "Tavsiya etilgan" tabi uchun namunaviy hamkasb tavsiyalari.
+// Idempotent: tashkilotda tavsiya bo'lsa — o'tkazib yuboriladi.
+export async function seedLearningRecommendations(prisma: PrismaClient, organizationId: string) {
+  if ((await prisma.learningRecommendation.count({ where: { organizationId } })) > 0) return;
+
+  const employeeByEmail = async (email: string) =>
+    (await prisma.user.findFirst({ where: { organizationId, email }, select: { employee: { select: { id: true } } } }))?.employee?.id;
+  const materialByTitle = async (title: string) =>
+    (await prisma.learningMaterial.findFirst({ where: { organizationId, title }, select: { id: true } }))?.id;
+
+  const plan: [string, string, string, string | null][] = [
+    ['boshliq@demo.uz', 'xodim@demo.uz', 'Samarali muzokara olib borish', 'Mijozlar bilan uchrashuvlardan oldin albatta o‘tib chiq'],
+    ['hr@demo.uz', 'xodim@demo.uz', 'To‘lqin ustida: texnologiya, hokimiyat va buyuk dilemma', 'Kitob klubida muhokama qilamiz'],
+    ['tabelchi@demo.uz', 'xodim@demo.uz', 'Excel: moliyaviy tahlil asoslari', null],
+    ['xodim@demo.uz', 'boshliq@demo.uz', 'Tashqi kutubxonalarni boshqarish', 'Jamoa uchun foydali bo‘ladi'],
+    ['boshliq@demo.uz', 'hr@demo.uz', 'Hissiy intellekt ish joyida', null],
+  ];
+
+  let created = 0;
+  for (const [fromEmail, toEmail, title, comment] of plan) {
+    const [fromEmployeeId, toEmployeeId, materialId] = await Promise.all([
+      employeeByEmail(fromEmail),
+      employeeByEmail(toEmail),
+      materialByTitle(title),
+    ]);
+    if (!fromEmployeeId || !toEmployeeId || !materialId) continue;
+    await prisma.learningRecommendation.create({
+      data: { organizationId, fromEmployeeId, toEmployeeId, materialId, comment },
+    });
+    created += 1;
+  }
+  console.log(`Learning: ${created} ta namunaviy tavsiya yaratildi`);
 }
 
 // Mustaqil ishga tushirilganda — barcha tashkilotlar uchun
@@ -326,6 +361,7 @@ if (process.argv[1]?.includes('seed-learning')) {
       for (const org of orgs) {
         console.log(`Tashkilot: ${org.name}`);
         await seedLearning(prisma, org.id);
+        await seedLearningRecommendations(prisma, org.id);
       }
     })
     .catch((e) => {

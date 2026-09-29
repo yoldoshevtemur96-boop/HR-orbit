@@ -11,13 +11,16 @@ import {
   formatDate,
 } from '@/components/learning/materialUi';
 import { EventCard } from '@/components/learning/EventCard';
-import type { LearningEvent, LearningMaterial, LearningSummary } from '@/types/learning';
+import { useAuthStore } from '@/store/authStore';
+import { LEARNING_ADMIN_ROLES } from '@/lib/learningAdmin';
+import type { LearningEvent, LearningMaterial, LearningRecommendedMaterial, LearningSummary } from '@/types/learning';
 
-type TabKey = 'continue' | 'assigned' | 'events' | 'history';
+type TabKey = 'continue' | 'assigned' | 'recommended' | 'events' | 'history';
 
 const TABS: { key: TabKey; label: string }[] = [
   { key: 'continue', label: 'Davom ettirish' },
   { key: 'assigned', label: 'Tayinlangan' },
+  { key: 'recommended', label: 'Tavsiya etilgan' },
   { key: 'events', label: 'Tadbirlar' },
   { key: 'history', label: 'Tarix' },
 ];
@@ -67,6 +70,8 @@ const QUICK_LINKS: {
 // Learning & Development — xodimning bosh sahifasi
 export default function LearningHomePage() {
   const router = useRouter();
+  const user = useAuthStore((s) => s.user);
+  const isLearningAdmin = Boolean(user && LEARNING_ADMIN_ROLES.includes(user.role));
   const [search, setSearch] = useState('');
   const [tab, setTab] = useState<TabKey>('continue');
   const [summary, setSummary] = useState<LearningSummary | null>(null);
@@ -91,7 +96,9 @@ export default function LearningHomePage() {
           ? api.get<LearningMaterial[]>('/learning/my/progress', { params: { status: 'COMPLETED' } })
           : tab === 'assigned'
             ? api.get<LearningMaterial[]>('/learning/my/assignments')
-            : api.get<LearningEvent[]>('/learning/events', { params: { scope: 'mine' } });
+            : tab === 'recommended'
+              ? api.get<LearningRecommendedMaterial[]>('/learning/my/recommendations')
+              : api.get<LearningEvent[]>('/learning/events', { params: { scope: 'mine' } });
     request.then((res) => setTabData((prev) => ({ ...prev, [tab]: res.data })));
   }, [tab, tabData]);
 
@@ -103,11 +110,34 @@ export default function LearningHomePage() {
 
   const current = tabData[tab];
 
+  async function dismissRecommendation(materialId: string) {
+    await api.delete(`/learning/my/recommendations/${materialId}`);
+    setTabData((prev) => ({
+      ...prev,
+      recommended: (prev.recommended as LearningRecommendedMaterial[] | undefined)?.filter((m) => m.id !== materialId),
+    }));
+    setSummary((prev) => (prev ? { ...prev, recommended: Math.max(0, prev.recommended - 1) } : prev));
+  }
+
   return (
     <div className="flex flex-col gap-8">
-      <div>
-        <p className="text-xs font-semibold uppercase tracking-wide text-accent">Learning &amp; Development</p>
-        <h1 className="mt-1 font-display text-2xl font-semibold text-stone-900">O&apos;qish va rivojlanish</h1>
+      <div className="flex items-start justify-between gap-4">
+        <div>
+          <p className="text-xs font-semibold uppercase tracking-wide text-accent">Learning &amp; Development</p>
+          <h1 className="mt-1 font-display text-2xl font-semibold text-stone-900">O&apos;qish va rivojlanish</h1>
+        </div>
+        {isLearningAdmin && (
+          <Link
+            href="/learning-admin"
+            className="flex items-center gap-2 rounded-lg border border-stone-200 bg-white px-4 py-2.5 text-sm font-semibold text-stone-700 transition hover:border-accent hover:text-accent"
+          >
+            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round" className="h-4 w-4">
+              <path d="M12 15a3 3 0 1 0 0-6 3 3 0 0 0 0 6Z" />
+              <path d="M19.4 15a1.7 1.7 0 0 0 .3 1.8l.1.1a2 2 0 1 1-2.8 2.8l-.1-.1a1.7 1.7 0 0 0-1.8-.3 1.7 1.7 0 0 0-1 1.5V21a2 2 0 1 1-4 0v-.1a1.7 1.7 0 0 0-1.1-1.5 1.7 1.7 0 0 0-1.8.3l-.1.1a2 2 0 1 1-2.8-2.8l.1-.1a1.7 1.7 0 0 0 .3-1.8 1.7 1.7 0 0 0-1.5-1H3a2 2 0 1 1 0-4h.1a1.7 1.7 0 0 0 1.5-1.1 1.7 1.7 0 0 0-.3-1.8l-.1-.1a2 2 0 1 1 2.8-2.8l.1.1a1.7 1.7 0 0 0 1.8.3H9a1.7 1.7 0 0 0 1-1.5V3a2 2 0 1 1 4 0v.1a1.7 1.7 0 0 0 1 1.5 1.7 1.7 0 0 0 1.8-.3l.1-.1a2 2 0 1 1 2.8 2.8l-.1.1a1.7 1.7 0 0 0-.3 1.8V9a1.7 1.7 0 0 0 1.5 1H21a2 2 0 1 1 0 4h-.1a1.7 1.7 0 0 0-1.5 1Z" />
+            </svg>
+            Admin
+          </Link>
+        )}
       </div>
 
       {error && <p className="rounded-md bg-rose-50 px-3 py-2 text-sm text-rose-700">{error}</p>}
@@ -177,6 +207,9 @@ export default function LearningHomePage() {
               {t.key === 'assigned' && summary && summary.assigned > 0 && (
                 <span className="ml-1.5 rounded-full bg-accent px-1.5 py-0.5 text-[10px] font-semibold text-white">{summary.assigned}</span>
               )}
+              {t.key === 'recommended' && summary && summary.recommended > 0 && (
+                <span className="ml-1.5 rounded-full bg-sky-500 px-1.5 py-0.5 text-[10px] font-semibold text-white">{summary.recommended}</span>
+              )}
             </button>
           ))}
         </nav>
@@ -187,6 +220,7 @@ export default function LearningHomePage() {
           <EmptyState>
             {tab === 'continue' && "Boshlangan material yo'q — katalogdan birini tanlang."}
             {tab === 'assigned' && "Sizga tayinlangan material yo'q."}
+            {tab === 'recommended' && "Hamkasblaringiz hali hech narsa tavsiya qilmagan."}
             {tab === 'events' && (
               <>
                 Siz hali tadbirga yozilmagansiz.{' '}
@@ -197,6 +231,37 @@ export default function LearningHomePage() {
             )}
             {tab === 'history' && "Tugatilgan material hali yo'q."}
           </EmptyState>
+        ) : tab === 'recommended' ? (
+          <div className="grid gap-3 md:grid-cols-2">
+            {(current as LearningRecommendedMaterial[]).map((material) => (
+              <div key={material.id} className="flex flex-col gap-2">
+                <MaterialRow material={material} />
+                <div className="flex items-start justify-between gap-3 px-1">
+                  <div className="min-w-0 text-xs text-stone-500">
+                    <p>
+                      <span className="font-medium text-stone-700">{material.recommendedBy.map((r) => r.fullName).join(', ')}</span>{' '}
+                      tavsiya qildi
+                    </p>
+                    {material.recommendedBy
+                      .filter((r) => r.comment)
+                      .map((r) => (
+                        <p key={r.fullName} className="mt-0.5 italic text-stone-500">
+                          &laquo;{r.comment}&raquo; — {r.fullName}
+                        </p>
+                      ))}
+                  </div>
+                  <button
+                    type="button"
+                    onClick={() => dismissRecommendation(material.id)}
+                    title="Ro'yxatdan olib tashlash"
+                    className="flex-shrink-0 text-xs text-stone-400 hover:text-rose-600"
+                  >
+                    Olib tashlash
+                  </button>
+                </div>
+              </div>
+            ))}
+          </div>
         ) : tab === 'events' ? (
           <div className="grid gap-3 md:grid-cols-2">
             {(current as LearningEvent[]).map((event) => (

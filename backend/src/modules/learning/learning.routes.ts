@@ -66,6 +66,35 @@ learningRouter.get('/my/favorites', async (req, res) => {
 });
 
 // ---------------------------------------------------------------------------
+// Hamkasblar tavsiyasi
+// ---------------------------------------------------------------------------
+
+const colleaguesSchema = z.object({ search: z.string().trim().optional() });
+
+learningRouter.get('/colleagues', async (req, res) => {
+  const { search } = colleaguesSchema.parse(req.query);
+  res.json(await learningService.listColleagues(req.auth!, search));
+});
+
+const recommendSchema = z.object({
+  employeeIds: z.array(z.string().min(1)).min(1, 'Kamida bitta hamkasbni tanlang').max(50),
+  comment: z.string().trim().max(500).optional(),
+});
+
+learningRouter.post('/materials/:id/recommend', async (req, res) => {
+  const input = recommendSchema.parse(req.body);
+  res.status(201).json(await learningService.recommendMaterial(req.auth!, req.params.id, input));
+});
+
+learningRouter.get('/my/recommendations', async (req, res) => {
+  res.json(await learningService.listMyRecommendations(req.auth!));
+});
+
+learningRouter.delete('/my/recommendations/:materialId', async (req, res) => {
+  res.json(await learningService.dismissRecommendations(req.auth!, req.params.materialId));
+});
+
+// ---------------------------------------------------------------------------
 // Tadbirlar
 // ---------------------------------------------------------------------------
 
