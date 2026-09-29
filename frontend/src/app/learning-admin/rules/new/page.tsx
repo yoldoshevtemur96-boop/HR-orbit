@@ -1,8 +1,8 @@
 'use client';
 
-import { useEffect, useMemo, useState } from 'react';
+import { Suspense, useEffect, useMemo, useState } from 'react';
 import Link from 'next/link';
-import { useRouter } from 'next/navigation';
+import { useRouter, useSearchParams } from 'next/navigation';
 import { api } from '@/lib/api';
 import { FIELD_CLASS, MaterialPicker, OptionList, PreviewSummary, Section } from '@/components/learning-admin/formParts';
 import {
@@ -26,13 +26,22 @@ const RULE_TYPE_HINT: Record<RuleType, string> = {
 type DueMode = 'none' | 'date' | 'days';
 
 export default function NewRulePage() {
+  return (
+    <Suspense fallback={<p className="text-sm text-stone-400">Yuklanmoqda...</p>}>
+      <NewRule />
+    </Suspense>
+  );
+}
+
+function NewRule() {
   const router = useRouter();
+  const searchParams = useSearchParams();
   const [materials, setMaterials] = useState<AssignableMaterial[] | null>(null);
   const [options, setOptions] = useState<AudienceOptions | null>(null);
 
   const [name, setName] = useState('');
   const [type, setType] = useState<RuleType>('PERMANENT');
-  const [materialId, setMaterialId] = useState('');
+  const [materialId, setMaterialId] = useState(searchParams.get('materialId') ?? '');
   const [allOrganization, setAllOrganization] = useState(false);
   const [departmentIds, setDepartmentIds] = useState<string[]>([]);
   const [positionIds, setPositionIds] = useState<string[]>([]);

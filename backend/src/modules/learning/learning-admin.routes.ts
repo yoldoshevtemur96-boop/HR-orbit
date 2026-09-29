@@ -189,6 +189,23 @@ const materialSchema = z.object({
   visibleBranchIds: z.array(z.string().min(1)).max(500).optional(),
   availableFrom: optionalDate,
   availableUntil: optionalDate,
+  assignment: z
+    .object({
+      mode: z.enum(['ONE_TIME', 'PERMANENT']),
+      sameAsVisibility: z.boolean(),
+      allOrganization: z.boolean().optional(),
+      departmentIds: idList,
+      positionIds: idList,
+      branchIds: idList,
+      reason: z.enum(['LEGAL', 'POSITION', 'ONBOARDING', 'DEVELOPMENT', 'OTHER']),
+      reasonText: z.string().trim().max(300).nullable().optional(),
+      dueInDays: z.coerce.number().int().min(1).max(730).nullable().optional(),
+      dueDate: z.string().regex(/^\d{4}-\d{2}-\d{2}$/).nullable().optional(),
+      skipIfCompletedWithinDays: z.coerce.number().int().min(1).max(3650).nullable().optional(),
+    })
+    .nullable()
+    .optional(),
+  cancelActiveAssignments: z.boolean().optional(),
   contentUrl: optionalUrl,
   durationMinutes: z.coerce.number().int().min(0).max(100000).optional(),
   author: z.string().trim().max(200).nullable().optional(),

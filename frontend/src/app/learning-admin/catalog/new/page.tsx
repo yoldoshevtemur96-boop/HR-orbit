@@ -20,8 +20,13 @@ export default function NewMaterialPage() {
     setIsSaving(true);
     setError(null);
     try {
-      await api.post('/learning-admin/catalog', { ...toMaterialPayload(values), status });
-      router.push('/learning-admin/catalog');
+      const res = await api.post<{ assignmentResult: { ok: boolean; message: string } | null }>('/learning-admin/catalog', {
+        ...toMaterialPayload(values),
+        status,
+      });
+      const verb = status === 'PUBLISHED' ? 'Material nashr qilindi' : 'Qoralama saqlandi';
+      const msg = res.data.assignmentResult ? `${verb}. ${res.data.assignmentResult.message}` : verb;
+      router.push(`/learning-admin/catalog?msg=${encodeURIComponent(msg)}${res.data.assignmentResult?.ok === false ? '&warn=1' : ''}`);
     } catch (err: any) {
       setError(err?.response?.data?.error?.message ?? err?.response?.data?.error?.issues?.[0]?.message ?? 'Saqlashda xatolik');
       setIsSaving(false);

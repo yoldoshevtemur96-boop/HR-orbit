@@ -15,7 +15,7 @@ import {
   type LearningMaterialType,
   type LearningVisibility,
 } from '@/types/learning';
-import type { AudienceOptions } from '@/types/learningAdmin';
+import { ASSIGNMENT_REASON_LABEL, type AssignmentReason, type AudienceOptions } from '@/types/learningAdmin';
 
 export type PublishStatus = 'DRAFT' | 'PUBLISHED' | 'ARCHIVED';
 
@@ -42,6 +42,64 @@ export interface MaterialFormValues {
   visibleBranchIds: string[];
   availableFrom: string; // yyyy-mm-dd
   availableUntil: string;
+  assign: AssignSettings;
+}
+
+// "Majburiy qilish" bloki — material saqlanganda tayinlov yoki doimiy qoida yaratiladi
+export interface AssignSettings {
+  enabled: boolean;
+  mode: 'ONE_TIME' | 'PERMANENT';
+  sameAsVisibility: boolean;
+  allOrganization: boolean;
+  departmentIds: string[];
+  positionIds: string[];
+  branchIds: string[];
+  reason: AssignmentReason;
+  reasonText: string;
+  dueMode: 'days' | 'date' | 'none';
+  dueInDays: number;
+  dueDate: string;
+  checkHistory: boolean;
+  historyDays: number;
+}
+
+export const EMPTY_ASSIGN: AssignSettings = {
+  enabled: false,
+  mode: 'PERMANENT',
+  sameAsVisibility: true,
+  allOrganization: false,
+  departmentIds: [],
+  positionIds: [],
+  branchIds: [],
+  reason: 'POSITION',
+  reasonText: '',
+  dueMode: 'days',
+  dueInDays: 14,
+  dueDate: '',
+  checkHistory: true,
+  historyDays: 365,
+};
+
+// Backend'dagi saqlangan (qoralama) sozlamadan forma holatiga
+export function assignFromPending(pending: Record<string, any> | null | undefined): AssignSettings {
+  if (!pending) return EMPTY_ASSIGN;
+  return {
+    ...EMPTY_ASSIGN,
+    enabled: true,
+    mode: pending.mode ?? 'PERMANENT',
+    sameAsVisibility: Boolean(pending.sameAsVisibility),
+    allOrganization: Boolean(pending.allOrganization),
+    departmentIds: pending.departmentIds ?? [],
+    positionIds: pending.positionIds ?? [],
+    branchIds: pending.branchIds ?? [],
+    reason: pending.reason ?? 'POSITION',
+    reasonText: pending.reasonText ?? '',
+    dueMode: pending.dueDate ? 'date' : pending.dueInDays ? 'days' : 'none',
+    dueInDays: pending.dueInDays ?? 14,
+    dueDate: pending.dueDate ?? '',
+    checkHistory: Boolean(pending.skipIfCompletedWithinDays),
+    historyDays: pending.skipIfCompletedWithinDays ?? 365,
+  };
 }
 
 export const EMPTY_MATERIAL: MaterialFormValues = {
@@ -67,13 +125,29 @@ export const EMPTY_MATERIAL: MaterialFormValues = {
   visibleBranchIds: [],
   availableFrom: '',
   availableUntil: '',
+  assign: EMPTY_ASSIGN,
 };
 
 // Backend'ga yuboriladigan ko'rinish
 export function toMaterialPayload(values: MaterialFormValues) {
-  const { contentFile, level, language, availableFrom, availableUntil, ...rest } = values;
+  const { contentFile, level, language, availableFrom, availableUntil, assign, ...rest } = values;
   return {
     ...rest,
+    assignment: assign.enabled
+      ? {
+          mode: assign.mode,
+          sameAsVisibility: assign.sameAsVisibility,
+          allOrganization: assign.allOrganization,
+          departmentIds: assign.departmentIds,
+          positionIds: assign.positionIds,
+          branchIds: assign.branchIds,
+          reason: assign.reason,
+          reasonText: assign.reason === 'OTHER' ? assign.reasonText : null,
+          dueInDays: assign.dueMode === 'days' ? assign.dueInDays : null,
+          dueDate: assign.dueMode === 'date' && assign.mode === 'ONE_TIME' ? assign.dueDate || null : null,
+          skipIfCompletedWithinDays: assign.checkHistory ? assign.historyDays : null,
+        }
+      : null,
     contentFileId: values.contentSource === 'FILE' ? contentFile?.id ?? null : null,
     contentUrl: values.contentSource === 'LINK' ? values.contentUrl : '',
     level: level || null,
@@ -175,6 +249,17 @@ export function MaterialForm({
     setValues((v) => ({ ...v, [key]: v[key].includes(id) ? v[key].filter((x) => x !== id) : [...v[key], id] }));
   }
 
+  function setAssign<K extends keyof AssignSettings>(key: K, value: AssignSettings[K]) {
+    setValues((v) => ({ ...v, assign: { ...v.assign, [key]: value } }));
+  }
+
+  function toggleAssign(key: 'departmentIds' | 'positionIds' | 'branchIds', id: string) {
+    setValues((v) => ({
+      ...v,
+      assign: { ...v.assign, [key]: v.assign[key].includes(id) ? v.assign[key].filter((x) => x !== id) : [...v.assign[key], id] },
+    }));
+  }
+
   function addTag() {
     const tag = tagInput.trim().toLowerCase().replace(/^#/, '');
     if (tag && !values.tags.includes(tag) && values.tags.length < 10) set('tags', [...values.tags, tag]);
@@ -196,7 +281,16 @@ export function MaterialForm({
   const hasContent = values.contentSource === 'FILE' ? Boolean(values.contentFile) : values.contentUrl.trim().length > 0;
   const audienceSize = values.visibleDepartmentIds.length + values.visiblePositionIds.length + values.visibleBranchIds.length;
   const canSave = values.title.trim().length > 0;
-  const canPublish = canSave && hasContent && (values.visibility !== 'AUDIENCE' || audienceSize > 0);
+  const a = values.assign;
+  // Yashirin materialda "ko'rinadiganlarga" varianti ma'nosiz — alohida auditoriya kerak
+  const assignUsesVisibility = a.sameAsVisibility && values.visibility !== 'HIDDEN';
+  const assignAudienceOk =
+    !a.enabled ||
+    (assignUsesVisibility
+      ? true
+      : a.allOrganization || a.departmentIds.length + a.positionIds.length + a.branchIds.length > 0);
+  const assignValid = assignAudienceOk && (!a.enabled || a.reason !== 'OTHER' || a.reasonText.trim().length > 0);
+  const canPublish = canSave && hasContent && (values.visibility !== 'AUDIENCE' || audienceSize > 0) && assignValid;
   const previewMaterial = { id: values.title || 'yangi', type: values.type, coverUrl: values.coverUrl || null, title: values.title };
 
   return (
@@ -526,6 +620,140 @@ export function MaterialForm({
             </span>
           </label>
         </Block>
+
+        {/* 7. Majburiy qilish (tayinlash) */}
+        <Block
+          title="Majburiy qilish (tayinlash)"
+          hint={
+            currentStatus === 'PUBLISHED'
+              ? "Belgilansa — saqlashda yangi tayinlov yoki qoida yaratiladi. Mavjud tayinlovlar 'Tayinlovlar' tabida."
+              : 'Qoralamada sozlama saqlanadi va nashr qilinganda bajariladi.'
+          }
+        >
+          <label className="flex items-center gap-2 text-sm font-medium text-stone-800">
+            <input type="checkbox" checked={a.enabled} onChange={(e) => setAssign('enabled', e.target.checked)} />
+            Bu materialni xodimlarga tayinlash
+          </label>
+
+          {a.enabled && (
+            <>
+              <Choice<'ONE_TIME' | 'PERMANENT'>
+                value={a.mode}
+                onChange={(v) => setAssign('mode', v)}
+                options={[
+                  { value: 'PERMANENT', label: 'Doimiy', hint: 'Hozirgilarga va keyin qo‘shiladiganlarga avtomatik (qoida)' },
+                  { value: 'ONE_TIME', label: 'Bir martalik', hint: 'Faqat hozir mos kelganlarga' },
+                ]}
+              />
+
+              <div className="flex flex-col gap-2">
+                <p className="text-xs font-medium text-stone-500">Kimga</p>
+                <label className={`flex items-center gap-2 text-sm ${values.visibility === 'HIDDEN' ? 'opacity-40' : ''}`}>
+                  <input
+                    type="radio"
+                    disabled={values.visibility === 'HIDDEN'}
+                    checked={assignUsesVisibility}
+                    onChange={() => setAssign('sameAsVisibility', true)}
+                  />
+                  Ko&apos;rinadiganlarning hammasiga
+                  <span className="text-xs text-stone-400">
+                    ({values.visibility === 'ALL' ? 'butun tashkilot' : values.visibility === 'AUDIENCE' ? 'tanlangan bo‘lim/lavozim/filial' : 'yashirin materialda mavjud emas'})
+                  </span>
+                </label>
+                <label className="flex items-center gap-2 text-sm">
+                  <input type="radio" checked={!assignUsesVisibility} onChange={() => setAssign('sameAsVisibility', false)} />
+                  Boshqa auditoriya
+                </label>
+              </div>
+
+              {!assignUsesVisibility &&
+                (audience ? (
+                  <div className="flex flex-col gap-3">
+                    <label className="flex items-center gap-2 text-sm">
+                      <input type="checkbox" checked={a.allOrganization} onChange={(e) => setAssign('allOrganization', e.target.checked)} />
+                      Butun tashkilot
+                    </label>
+                    {!a.allOrganization && (
+                      <div className="grid gap-3 md:grid-cols-3">
+                        <OptionList title="Bo'limlar" items={audience.departments} selected={a.departmentIds} onToggle={(id) => toggleAssign('departmentIds', id)} />
+                        <OptionList title="Lavozimlar" items={audience.positions} selected={a.positionIds} onToggle={(id) => toggleAssign('positionIds', id)} />
+                        <OptionList title="Filiallar" items={audience.branches} selected={a.branchIds} onToggle={(id) => toggleAssign('branchIds', id)} />
+                      </div>
+                    )}
+                  </div>
+                ) : (
+                  <p className="text-sm text-stone-400">Yuklanmoqda...</p>
+                ))}
+
+              <div className="grid gap-4 md:grid-cols-2">
+                <div>
+                  <label className="mb-1 block text-xs font-medium text-stone-500">Sabab</label>
+                  <select value={a.reason} onChange={(e) => setAssign('reason', e.target.value as AssignmentReason)} className={FIELD_CLASS}>
+                    {(Object.keys(ASSIGNMENT_REASON_LABEL) as AssignmentReason[]).map((r) => (
+                      <option key={r} value={r}>
+                        {ASSIGNMENT_REASON_LABEL[r]}
+                      </option>
+                    ))}
+                  </select>
+                  {a.reason === 'OTHER' && (
+                    <input
+                      value={a.reasonText}
+                      onChange={(e) => setAssign('reasonText', e.target.value)}
+                      placeholder="Sababni yozing"
+                      className={`${FIELD_CLASS} mt-2`}
+                    />
+                  )}
+                </div>
+                <div className="flex flex-col gap-2 text-sm">
+                  <span className="text-xs font-medium text-stone-500">Muddat</span>
+                  <label className="flex items-center gap-2">
+                    <input type="radio" checked={a.dueMode === 'days'} onChange={() => setAssign('dueMode', 'days')} />
+                    <input
+                      type="number"
+                      min={1}
+                      value={a.dueInDays}
+                      onChange={(e) => setAssign('dueInDays', Math.max(1, Number(e.target.value) || 1))}
+                      className="w-20 rounded-lg border border-stone-200 px-2 py-1 text-sm"
+                    />
+                    kun ichida
+                  </label>
+                  {a.mode === 'ONE_TIME' && (
+                    <label className="flex items-center gap-2">
+                      <input type="radio" checked={a.dueMode === 'date'} onChange={() => setAssign('dueMode', 'date')} />
+                      <input
+                        type="date"
+                        value={a.dueDate}
+                        onChange={(e) => {
+                          setAssign('dueDate', e.target.value);
+                          setAssign('dueMode', 'date');
+                        }}
+                        className="rounded-lg border border-stone-200 px-2 py-1 text-sm"
+                      />
+                    </label>
+                  )}
+                  <label className="flex items-center gap-2">
+                    <input type="radio" checked={a.dueMode === 'none'} onChange={() => setAssign('dueMode', 'none')} />
+                    Muddatsiz
+                  </label>
+                </div>
+              </div>
+
+              <label className="flex flex-wrap items-center gap-2 text-sm text-stone-700">
+                <input type="checkbox" checked={a.checkHistory} onChange={(e) => setAssign('checkHistory', e.target.checked)} />
+                Oxirgi
+                <input
+                  type="number"
+                  min={1}
+                  value={a.historyDays}
+                  disabled={!a.checkHistory}
+                  onChange={(e) => setAssign('historyDays', Math.max(1, Number(e.target.value) || 1))}
+                  className="w-20 rounded-lg border border-stone-200 px-2 py-1 text-sm disabled:opacity-50"
+                />
+                kun ichida o&apos;tganlarga tayinlamaslik
+              </label>
+            </>
+          )}
+        </Block>
       </div>
 
       <aside className="sticky top-4 flex flex-col gap-4">
@@ -564,6 +792,15 @@ export function MaterialForm({
             </button>
           )}
           {canSave && !hasContent && <p className="text-xs text-stone-400">Nashr qilish uchun kontent faylini yuklang yoki havola kiriting.</p>}
+          {a.enabled && !assignValid && (
+            <p className="text-xs text-stone-400">Tayinlash uchun auditoriya va sababni to&apos;ldiring.</p>
+          )}
+          {a.enabled && (
+            <p className="text-xs text-stone-500">
+              {a.mode === 'PERMANENT' ? 'Doimiy qoida yaratiladi' : 'Bir martalik tayinlanadi'}
+              {currentStatus === 'PUBLISHED' ? ' — saqlanganda.' : ' — nashr qilinganda.'}
+            </p>
+          )}
           {values.visibility === 'AUDIENCE' && audienceSize === 0 && (
             <p className="text-xs text-stone-400">Ko&apos;rinish uchun kamida bitta bo&apos;lim, lavozim yoki filial tanlang.</p>
           )}

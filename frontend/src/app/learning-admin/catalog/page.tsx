@@ -1,7 +1,8 @@
 'use client';
 
-import { useCallback, useEffect, useState } from 'react';
+import { Suspense, useCallback, useEffect, useState } from 'react';
 import Link from 'next/link';
+import { useSearchParams } from 'next/navigation';
 import { api } from '@/lib/api';
 import { MATERIAL_TYPE_LABEL, MATERIAL_TYPE_STYLE, MaterialCover, formatDate, formatDuration } from '@/components/learning/materialUi';
 import type { PublishStatus } from '@/components/learning-admin/MaterialForm';
@@ -36,6 +37,17 @@ const STATUS_TABS: { key: PublishStatus; label: string }[] = [
 const TYPES: ('' | LearningMaterialType)[] = ['', 'COURSE', 'VIDEO', 'AUDIO', 'ARTICLE', 'BOOK', 'INSTRUCTION', 'PRESENTATION'];
 
 export default function CatalogAdminPage() {
+  return (
+    <Suspense fallback={<p className="text-sm text-stone-400">Yuklanmoqda...</p>}>
+      <CatalogAdmin />
+    </Suspense>
+  );
+}
+
+function CatalogAdmin() {
+  const searchParams = useSearchParams();
+  const flash = searchParams.get('msg');
+  const flashIsWarning = searchParams.get('warn') === '1';
   const [status, setStatus] = useState<PublishStatus>('PUBLISHED');
   const [type, setType] = useState<'' | LearningMaterialType>('');
   const [search, setSearch] = useState('');
@@ -128,6 +140,9 @@ export default function CatalogAdminPage() {
         </div>
       </div>
 
+      {flash && (
+        <p className={`rounded-md px-3 py-2 text-sm ${flashIsWarning ? 'bg-amber-50 text-amber-800' : 'bg-emerald-50 text-emerald-800'}`}>{flash}</p>
+      )}
       {error && <p className="rounded-md bg-rose-50 px-3 py-2 text-sm text-rose-700">{error}</p>}
 
       {data === null ? (

@@ -1,3 +1,4 @@
+import { Prisma } from '@prisma/client';
 import type {
   LearningCompletionRule,
   LearningContentSource,
@@ -6,12 +7,12 @@ import type {
   LearningMaterialType,
   LearningPublishStatus,
   LearningVisibility,
-  Prisma,
   RoleName,
 } from '@prisma/client';
 import { prisma } from '@/config/prisma';
 import { AppError } from '@/common/errors/AppError';
-import { isLearningAdmin } from './assignment.service';
+import { createAssignments, isLearningAdmin } from './assignment.service';
+import { createRule } from './rule.service';
 import { assertFileInOrganization, signedFilePath } from '@/modules/files/file.service';
 
 interface AuthContext {
@@ -51,6 +52,90 @@ export interface MaterialInput {
   visibleBranchIds?: string[];
   availableFrom?: Date | null;
   availableUntil?: Date | null;
+  // Formadagi "Majburiy qilish" bloki — nashrda bajariladi, qoralamada saqlanadi
+  assignment?: MaterialAssignmentSettings | null;
+  // Arxivlashda: faol tayinlovlarni bekor qilish va qoidalarni to'xtatish
+  cancelActiveAssignments?: boolean;
+}
+
+export interface MaterialAssignmentSettings {
+  mode: 'ONE_TIME' | 'PERMANENT';
+  sameAsVisibility: boolean;
+  allOrganization?: boolean;
+  departmentIds?: string[];
+  positionIds?: string[];
+  branchIds?: string[];
+  reason: 'LEGAL' | 'POSITION' | 'ONBOARDING' | 'DEVELOPMENT' | 'OTHER';
+  reasonText?: string | null;
+  dueInDays?: number | null;
+  dueDate?: string | null; // yyyy-mm-dd, faqat ONE_TIME
+  skipIfCompletedWithinDays?: number | null;
+}
+
+// Formadan kelgan tayinlash sozlamasini bajaradi: bir martalik — qo'lda
+// tayinlash, doimiy — qoida yaratish. Material saqlanishini to'xtatmaydi:
+// natija (yoki "tayinlanadigan xodim yo'q" kabi sabab) javobda qaytadi.
+async function runMaterialAssignment(
+  auth: AuthContext,
+  material: {
+    id: string;
+    title: string;
+    visibility: LearningVisibility;
+    visibleDepartmentIds: string[];
+    visiblePositionIds: string[];
+    visibleBranchIds: string[];
+  },
+  settings: MaterialAssignmentSettings,
+) {
+  const audience = settings.sameAsVisibility
+    ? material.visibility === 'ALL'
+      ? { allOrganization: true }
+      : material.visibility === 'AUDIENCE'
+        ? {
+            departmentIds: material.visibleDepartmentIds,
+            positionIds: material.visiblePositionIds,
+            branchIds: material.visibleBranchIds,
+          }
+        : null
+    : {
+        allOrganization: settings.allOrganization,
+        departmentIds: settings.departmentIds ?? [],
+        positionIds: settings.positionIds ?? [],
+        branchIds: settings.branchIds ?? [],
+      };
+  if (!audience) {
+    return { ok: false, message: "Yashirin material uchun tayinlash auditoriyasini alohida tanlang" };
+  }
+
+  const dueDate = settings.mode === 'ONE_TIME' && settings.dueDate ? new Date(`${settings.dueDate}T18:59:59.000Z`) : null;
+  try {
+    if (settings.mode === 'PERMANENT') {
+      const result = await createRule(auth, {
+        name: `${material.title} — avtomatik tayinlash`,
+        materialId: material.id,
+        type: 'PERMANENT',
+        ...audience,
+        reason: settings.reason,
+        reasonText: settings.reasonText,
+        dueInDays: settings.dueInDays ?? null,
+        skipIfCompletedWithinDays: settings.skipIfCompletedWithinDays ?? null,
+        cancelOutOfScope: true,
+      });
+      return { ok: true, message: `Doimiy qoida yaratildi, ${result.assigned} ta xodimga tayinlandi` };
+    }
+    const result = await createAssignments(auth, {
+      materialId: material.id,
+      audience,
+      reason: settings.reason,
+      reasonText: settings.reasonText ?? undefined,
+      dueDate: dueDate ?? undefined,
+      dueInDays: dueDate ? undefined : settings.dueInDays ?? undefined,
+      skipIfCompletedWithinDays: settings.skipIfCompletedWithinDays ?? undefined,
+    });
+    return { ok: true, message: `${result.assignedCount} ta xodimga tayinlandi` };
+  } catch (err) {
+    return { ok: false, message: err instanceof AppError ? err.message : "Tayinlab bo'lmadi" };
+  }
 }
 
 function normalizeTags(tags: string[] | undefined) {
@@ -205,9 +290,15 @@ export async function getCatalogMaterial(auth: AuthContext, materialId: string) 
         select: { id: true, fileName: true, mimeType: true, sizeBytes: true },
       })
     : null;
+  const [activeAssignments, activeRules] = await Promise.all([
+    prisma.learningAssignment.count({ where: { organizationId: auth.organizationId, materialId, status: 'ACTIVE' } }),
+    prisma.learningAssignmentRule.count({ where: { organizationId: auth.organizationId, materialId, isActive: true } }),
+  ]);
   return {
     ...material,
     contentFile: contentFile ? { ...contentFile, url: signedFilePath(contentFile.id) } : null,
+    activeAssignments,
+    activeRules,
   };
 }
 
@@ -226,7 +317,7 @@ export async function createMaterial(auth: AuthContext, input: MaterialInput) {
     availableFrom: input.availableFrom,
     availableUntil: input.availableUntil,
   });
-  return prisma.learningMaterial.create({
+  const created = await prisma.learningMaterial.create({
     data: {
       organizationId: auth.organizationId,
       createdByUserId: auth.userId,
@@ -242,8 +333,13 @@ export async function createMaterial(auth: AuthContext, input: MaterialInput) {
       status,
       publishedAt: new Date(),
       ...settingsData(input),
+      // Qoralamada tayinlash sozlamasi saqlanadi — nashr qilinganda bajariladi
+      pendingAssignment: status === 'DRAFT' && input.assignment ? (input.assignment as unknown as Prisma.InputJsonValue) : undefined,
     },
   });
+  const assignmentResult =
+    status === 'PUBLISHED' && input.assignment ? await runMaterialAssignment(auth, created, input.assignment) : null;
+  return { ...created, assignmentResult };
 }
 
 export async function updateMaterial(auth: AuthContext, materialId: string, input: Partial<MaterialInput>) {
@@ -279,5 +375,38 @@ export async function updateMaterial(auth: AuthContext, materialId: string, inpu
     if (input.status === 'PUBLISHED' && existing.status === 'DRAFT') data.publishedAt = new Date();
   }
 
-  return prisma.learningMaterial.update({ where: { id: materialId }, data });
+  const nextStatus = input.status ?? existing.status;
+  // Tayinlash sozlamasi: qoralamada saqlanadi, nashr qilinganda (yoki nashr
+  // qilingan materialda darhol) bajariladi. null — saqlangan sozlamani o'chirish.
+  const settings =
+    input.assignment !== undefined
+      ? input.assignment
+      : existing.pendingAssignment
+        ? (existing.pendingAssignment as unknown as MaterialAssignmentSettings)
+        : null;
+  const runNow = nextStatus === 'PUBLISHED' && settings !== null && (input.assignment != null || existing.status !== 'PUBLISHED');
+  if (nextStatus === 'DRAFT' && input.assignment !== undefined) {
+    data.pendingAssignment = input.assignment ? (input.assignment as unknown as Prisma.InputJsonValue) : Prisma.DbNull;
+  }
+  if (runNow) data.pendingAssignment = Prisma.DbNull;
+
+  const updated = await prisma.learningMaterial.update({ where: { id: materialId }, data });
+
+  let cancelledAssignments = 0;
+  if (nextStatus === 'ARCHIVED' && existing.status !== 'ARCHIVED' && input.cancelActiveAssignments) {
+    const [cancelled] = await prisma.$transaction([
+      prisma.learningAssignment.updateMany({
+        where: { organizationId: auth.organizationId, materialId, status: 'ACTIVE' },
+        data: { status: 'CANCELLED', cancelledAt: new Date(), cancelledByUserId: auth.userId },
+      }),
+      prisma.learningAssignmentRule.updateMany({
+        where: { organizationId: auth.organizationId, materialId, isActive: true },
+        data: { isActive: false },
+      }),
+    ]);
+    cancelledAssignments = cancelled.count;
+  }
+
+  const assignmentResult = runNow && settings ? await runMaterialAssignment(auth, updated, settings) : null;
+  return { ...updated, assignmentResult, cancelledAssignments };
 }
