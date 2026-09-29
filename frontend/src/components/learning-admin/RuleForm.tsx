@@ -115,7 +115,8 @@ const RULE_TYPE_HINT: Record<RuleType, string> = {
   ONE_TIME: "Faqat hozir mos kelgan xodimlarga bir marta tayinlanadi, keyin 'Bajarildi' holatiga o'tadi.",
 };
 
-// Qoida formasi — Pulsdagi kabi 4 bo'lim: Ma'lumotlar, Materiallar,
+// Qoida formasi — 3 bo'lim: Ma'lumotlar, Parametrlar, Maqsadli guruh.
+// Material tanlanmaydi: global qoida kurs sahifasida kursga biriktiriladi.
 // Parametrlar, Maqsadli guruh. O'ngda "hozir ishga tushsa" natijasi.
 // Global qoida — materialsiz (kurslar unga kurs ichida biriktiriladi).
 // Lokal qoida — localMaterial berilganda: faqat shu kurs uchun.
@@ -213,35 +214,15 @@ export function RuleForm({
           </div>
         </Section>
 
-        {/* 2. Kurslar */}
-        {localMaterial ? (
-          <Section step={2} title="Kurs (lokal qoida)">
-            <p className="text-sm text-stone-700">
-              <span className="font-semibold">{localMaterial.title}</span>
-            </p>
-            <p className="text-xs text-stone-400">Bu qoida faqat shu kursga ta&apos;sir qiladi.</p>
-          </Section>
-        ) : (
-          <Section step={2} title="Kurslar">
-            <p className="text-sm text-stone-600">
-              Global qoida — kursga bog&apos;lanmagan. Uni kurs sahifasidagi &quot;Tayinlash&quot; bo&apos;limida istalgan kursga biriktirasiz.
-            </p>
-            {attachedMaterials.length > 0 ? (
-              <ul className="flex flex-wrap gap-1.5">
-                {attachedMaterials.map((m) => (
-                  <li key={m.id} className="rounded-full bg-stone-100 px-2.5 py-1 text-xs text-stone-600">
-                    {m.title}
-                  </li>
-                ))}
-              </ul>
-            ) : (
-              mode === 'edit' && <p className="text-xs text-stone-400">Hali hech qaysi kursga biriktirilmagan.</p>
-            )}
-          </Section>
+        {/* Lokal qoida — qaysi kurs uchun (faqat ko'rsatiladi, tanlanmaydi) */}
+        {localMaterial && (
+          <p className="rounded-lg border border-teal-200 bg-teal-50 px-4 py-3 text-sm text-teal-800">
+            Lokal qoida: faqat <span className="font-semibold">{localMaterial.title}</span> kursiga ta&apos;sir qiladi.
+          </p>
         )}
 
         {/* 3. Parametrlar */}
-        <Section step={3} title="Parametrlar">
+        <Section step={2} title="Parametrlar">
           <div className="grid gap-2 md:grid-cols-2">
             {(['PERMANENT', 'ONE_TIME'] as RuleType[]).map((t) => (
               <label
@@ -345,7 +326,7 @@ export function RuleForm({
         </Section>
 
         {/* 4. Maqsadli guruh */}
-        <Section step={4} title="Maqsadli guruh">
+        <Section step={3} title="Maqsadli guruh">
           {options === null ? (
             <p className="text-sm text-stone-400">Yuklanmoqda...</p>
           ) : (
@@ -389,7 +370,21 @@ export function RuleForm({
           emptyHint="Maqsadli guruhni tanlang."
           countLabel={localMaterial ? 'xodimga tayinlanadi' : 'xodim mos keladi'}
         />
-        {!localMaterial && <p className="text-xs text-stone-400">Qoida biriktirilgan har bir kurs bo&apos;yicha shu xodimlarga tayinlaydi.</p>}
+        {!localMaterial && (
+          <p className="text-xs text-stone-400">
+            Material tanlanmaydi — qoidani kurs sahifasidagi &quot;Tayinlovlar&quot; tabida istalgan kursga biriktirasiz.
+          </p>
+        )}
+        {!localMaterial && attachedMaterials.length > 0 && (
+          <div className="border-t border-stone-100 pt-3">
+            <p className="text-xs font-medium text-stone-500">Biriktirilgan kurslar ({attachedMaterials.length})</p>
+            <ul className="mt-1 flex flex-col gap-0.5 text-xs text-stone-600">
+              {attachedMaterials.map((m) => (
+                <li key={m.id}>· {m.title}</li>
+              ))}
+            </ul>
+          </div>
+        )}
         {v.type === 'PERMANENT' && <p className="text-xs text-stone-400">Keyin shartga mos kelgan yangi xodimlarga ham avtomatik tayinlanadi.</p>}
         {error && <p className="rounded-md bg-rose-50 px-3 py-2 text-sm text-rose-700">{error}</p>}
         <button
