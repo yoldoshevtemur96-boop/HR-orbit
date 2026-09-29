@@ -36,6 +36,10 @@ function NewAssignment() {
   const [options, setOptions] = useState<AudienceOptions | null>(null);
 
   const [materialId, setMaterialId] = useState(searchParams.get('materialId') ?? '');
+  const [name, setName] = useState('');
+  // Mavjud tayinlovga xodim qo'shish rejimi: material va parametrlar tayinlovdan
+  const batchId = searchParams.get('batchId');
+  const [batch, setBatch] = useState<{ id: string; name: string; material: { id: string; title: string } } | null>(null);
   const [audience, setAudience] = useState<Audience>(EMPTY_AUDIENCE);
   const [employeeSearch, setEmployeeSearch] = useState('');
   const [reason, setReason] = useState<AssignmentReason>('DEVELOPMENT');
@@ -64,8 +68,18 @@ function NewAssignment() {
     audience.branchIds.length > 0 ||
     audience.employeeIds.length > 0;
 
+  useEffect(() => {
+    if (!batchId) return;
+    api.get(`/learning-admin/batches/${batchId}`).then((res) => {
+      setBatch(res.data);
+      setMaterialId(res.data.material.id);
+    });
+  }, [batchId]);
+
   const payload = useMemo(
     () => ({
+      name: name.trim() || undefined,
+      batchId: batchId ?? undefined,
       materialId,
       audience,
       reason,
@@ -75,7 +89,7 @@ function NewAssignment() {
       dueInDays: dueMode === 'days' ? dueInDays : undefined,
       skipIfCompletedWithinDays: checkHistory ? historyDays : undefined,
     }),
-    [materialId, audience, reason, reasonText, note, dueMode, dueDate, dueInDays, checkHistory, historyDays],
+    [name, batchId, materialId, audience, reason, reasonText, note, dueMode, dueDate, dueInDays, checkHistory, historyDays],
   );
 
   // Material va auditoriya tanlanganda — kimga tushishini jonli hisoblaymiz
@@ -106,8 +120,8 @@ function NewAssignment() {
     setError(null);
     setIsSubmitting(true);
     try {
-      await api.post('/learning-admin/assignments', payload);
-      router.push(`/learning-admin/assignments`);
+      const res = await api.post<{ batchId: string; assignedCount: number }>('/learning-admin/assignments', payload);
+      router.push(`/learning-admin/assignments/${res.data.batchId}`);
     } catch (err: any) {
       setError(err?.response?.data?.error?.message ?? err?.response?.data?.error?.issues?.[0]?.message ?? 'Tayinlashda xatolik');
       setIsSubmitting(false);
@@ -135,10 +149,29 @@ function NewAssignment() {
 
       <div className="grid items-start gap-6 lg:grid-cols-[1fr_320px]">
         <div className="flex flex-col gap-5">
-          {/* 1. Material */}
-          <Section step={1} title="Material">
-            <MaterialPicker materials={materials} value={materialId} onChange={setMaterialId} />
-          </Section>
+          {/* 1. Tayinlov va material */}
+          {batch ? (
+            <Section step={1} title="Tayinlovga xodim qo'shish">
+              <p className="text-sm text-stone-700">
+                <span className="font-semibold">{batch.name}</span> · {batch.material.title}
+              </p>
+              <p className="text-xs text-stone-400">Sabab va muddat tayinlovning o&apos;zidan olinadi — faqat kimga qo&apos;shishni tanlang.</p>
+            </Section>
+          ) : (
+            <Section step={1} title="Tayinlov va material">
+              <div>
+                <label className="mb-1 block text-xs font-medium text-stone-500">Tayinlov nomi</label>
+                <input
+                  value={name}
+                  onChange={(e) => setName(e.target.value)}
+                  placeholder="Bo'sh qoldirilsa: «Material nomi — bugungi sana»"
+                  className={FIELD_CLASS}
+                  maxLength={200}
+                />
+              </div>
+              <MaterialPicker materials={materials} value={materialId} onChange={setMaterialId} />
+            </Section>
+          )}
 
           {/* 2. Kimga */}
           <Section step={2} title="Kimga">
@@ -216,6 +249,7 @@ function NewAssignment() {
           </Section>
 
           {/* 3. Parametrlar */}
+          {!batch && (
           <Section step={3} title="Parametrlar">
             <div className="grid gap-4 md:grid-cols-2">
               <div>
@@ -298,6 +332,7 @@ function NewAssignment() {
               <textarea value={note} onChange={(e) => setNote(e.target.value)} rows={2} className={FIELD_CLASS} />
             </div>
           </Section>
+          )}
         </div>
 
         {/* Natija paneli */}

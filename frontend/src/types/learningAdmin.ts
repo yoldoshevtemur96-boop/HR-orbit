@@ -91,6 +91,7 @@ export interface AssignmentRow {
   note: string | null;
   source: AssignmentSource;
   rule: { id: string; name: string } | null;
+  batch: { id: string; name: string } | null;
   dueDate: string | null;
   createdAt: string;
   cancelledAt: string | null;
@@ -155,4 +156,46 @@ export interface AssignmentRuleRow {
   completedAssignments: number;
   cancelledAssignments: number;
   completionPercent: number;
+}
+
+export type BatchState = 'IN_PROGRESS' | 'COMPLETED' | 'HAS_OVERDUE' | 'CANCELLED';
+
+export const BATCH_STATE_LABEL: Record<BatchState, string> = {
+  IN_PROGRESS: 'Jarayonda',
+  HAS_OVERDUE: "Muddati o'tganlar bor",
+  COMPLETED: 'Bajarildi',
+  CANCELLED: 'Bekor qilingan',
+};
+
+export const BATCH_STATE_STYLE: Record<BatchState, string> = {
+  IN_PROGRESS: 'bg-sky-50 text-sky-700',
+  HAS_OVERDUE: 'bg-rose-50 text-rose-700',
+  COMPLETED: 'bg-emerald-50 text-emerald-700',
+  CANCELLED: 'bg-stone-100 text-stone-400',
+};
+
+export interface BatchRow {
+  id: string;
+  name: string;
+  source: AssignmentSource;
+  material: { id: string; title: string; type: LearningMaterialType };
+  rule: { id: string; name: string; status: RuleStatus } | null;
+  reason: AssignmentReason;
+  reasonText: string | null;
+  dueDate: string | null;
+  dueInDays: number | null;
+  audienceSummary: string | null;
+  createdAt: string;
+  createdBy: string | null;
+  total: number;
+  completed: number;
+  overdue: number;
+  cancelled: number;
+  completionPercent: number;
+  state: BatchState;
+}
+
+export interface BatchList {
+  counts: Record<BatchState, number>;
+  rows: BatchRow[];
 }

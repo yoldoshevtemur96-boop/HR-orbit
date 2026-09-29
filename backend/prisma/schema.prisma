@@ -49,6 +49,7 @@ model Organization {
   learningRecommendations    LearningRecommendation[]
   learningAssignmentRules    LearningAssignmentRule[]
   storedFiles                StoredFile[]
+  learningAssignmentBatches  LearningAssignmentBatch[]
   learningAssignments        LearningAssignment[]
   learningEvents             LearningEvent[]
   learningEventRegistrations LearningEventRegistration[]
@@ -908,14 +909,15 @@ model LearningMaterial {
   createdAt            DateTime               @default(now())
   updatedAt            DateTime               @updatedAt
 
-  organization    Organization              @relation(fields: [organizationId], references: [id], onDelete: Cascade)
-  progress        LearningProgress[]
-  favorites       LearningFavorite[]
-  recommendations LearningRecommendation[]
-  assignmentRules LearningAssignmentRule[]
-  assignments     LearningAssignment[]
-  requests        LearningRequest[]
-  goalMaterials   DevelopmentGoalMaterial[]
+  organization      Organization              @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+  progress          LearningProgress[]
+  favorites         LearningFavorite[]
+  recommendations   LearningRecommendation[]
+  assignmentRules   LearningAssignmentRule[]
+  assignmentBatches LearningAssignmentBatch[]
+  assignments       LearningAssignment[]
+  requests          LearningRequest[]
+  goalMaterials     DevelopmentGoalMaterial[]
 
   @@index([organizationId, status, publishedAt])
   @@map("learning_materials")
@@ -1021,18 +1023,50 @@ model LearningAssignment {
   cancelledByUserId String?
   reminderSentAt    DateTime?
   ruleId            String? // source = RULE bo'lsa — qaysi qoida bergan
+  batchId           String? // qaysi tayinlov (partiya) tarkibida
   createdAt         DateTime                 @default(now())
   updatedAt         DateTime                 @default(now()) @updatedAt
 
-  organization Organization            @relation(fields: [organizationId], references: [id], onDelete: Cascade)
-  material     LearningMaterial        @relation(fields: [materialId], references: [id], onDelete: Cascade)
-  rule         LearningAssignmentRule? @relation(fields: [ruleId], references: [id], onDelete: SetNull)
+  organization Organization             @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+  material     LearningMaterial         @relation(fields: [materialId], references: [id], onDelete: Cascade)
+  rule         LearningAssignmentRule?  @relation(fields: [ruleId], references: [id], onDelete: SetNull)
+  batch        LearningAssignmentBatch? @relation(fields: [batchId], references: [id], onDelete: SetNull)
 
   @@index([organizationId, employeeId])
   @@index([organizationId, materialId, status])
   @@index([employeeId, materialId])
   @@index([ruleId, status])
+  @@index([batchId, status])
   @@map("learning_assignments")
+}
+
+// Tayinlov — bitta tayinlash amali ("Tayinlovlar" ro'yxatidagi qator): nomi,
+// materiali, sababi, muddati. Xodimlar tayinlovlari uning ichida. Qo'lda
+// tayinlashda har safar yangisi yaratiladi; qoida uchun — bittadan (ruleId).
+model LearningAssignmentBatch {
+  id              String                   @id @default(cuid())
+  organizationId  String
+  name            String
+  materialId      String
+  source          LearningAssignmentSource @default(MANUAL)
+  ruleId          String?                  @unique
+  reason          LearningAssignmentReason @default(DEVELOPMENT)
+  reasonText      String?
+  note            String?
+  dueDate         DateTime?
+  dueInDays       Int?
+  audienceSummary String? // masalan: "IT bo'limi, Moliya bo'limi"
+  createdByUserId String?
+  createdAt       DateTime                 @default(now())
+  updatedAt       DateTime                 @updatedAt
+
+  organization Organization            @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+  material     LearningMaterial        @relation(fields: [materialId], references: [id], onDelete: Cascade)
+  rule         LearningAssignmentRule? @relation(fields: [ruleId], references: [id], onDelete: SetNull)
+  assignments  LearningAssignment[]
+
+  @@index([organizationId, createdAt])
+  @@map("learning_assignment_batches")
 }
 
 // Qoida holati: Qoralama -> Faol -> (To'xtatilgan | Bajarildi) -> Arxiv.
@@ -1079,9 +1113,10 @@ model LearningAssignmentRule {
   createdAt                 DateTime                 @default(now())
   updatedAt                 DateTime                 @updatedAt
 
-  organization Organization         @relation(fields: [organizationId], references: [id], onDelete: Cascade)
-  material     LearningMaterial     @relation(fields: [materialId], references: [id], onDelete: Cascade)
+  organization Organization             @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+  material     LearningMaterial         @relation(fields: [materialId], references: [id], onDelete: Cascade)
   assignments  LearningAssignment[]
+  batch        LearningAssignmentBatch?
 
   @@index([organizationId, status, type])
   @@map("learning_assignment_rules")

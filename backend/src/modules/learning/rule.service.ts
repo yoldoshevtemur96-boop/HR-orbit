@@ -98,6 +98,28 @@ export async function runRule(ruleId: string, onlyEmployeeId?: string) {
   const audience = await resolveRuleAudience(rule, true, onlyEmployeeId);
   const split = await filterCandidates(rule.organizationId, rule.materialId, audience, rule.skipIfCompletedWithinDays);
 
+  // Qoidaning tayinlovi ("Tayinlovlar" ro'yxatida bitta qator) — bitta, nomi qoida nomi
+  const batch =
+    split.toAssign.length > 0
+      ? await prisma.learningAssignmentBatch.upsert({
+          where: { ruleId: rule.id },
+          create: {
+            organizationId: rule.organizationId,
+            name: rule.name,
+            materialId: rule.materialId,
+            source: 'RULE',
+            ruleId: rule.id,
+            reason: rule.reason,
+            reasonText: rule.reasonText,
+            note: rule.note,
+            dueDate: rule.dueDate,
+            dueInDays: rule.dueInDays,
+            createdByUserId: rule.createdByUserId,
+          },
+          update: {},
+        })
+      : null;
+
   const assigned = await performAssign({
     organizationId: rule.organizationId,
     material: rule.material,
@@ -110,6 +132,7 @@ export async function runRule(ruleId: string, onlyEmployeeId?: string) {
     reasonText: rule.reasonText,
     source: 'RULE',
     ruleId: rule.id,
+    batchId: batch?.id ?? null,
   });
 
   let cancelled = 0;
@@ -268,7 +291,13 @@ export async function updateRule(auth: AuthContext, ruleId: string, input: RuleI
     throw AppError.badRequest("Faqat qoralama yoki to'xtatilgan qoidani tahrirlash mumkin — avval to'xtating");
   }
   await validateRuleInput(auth, input);
-  return prisma.learningAssignmentRule.update({ where: { id: rule.id }, data: ruleData(input) });
+  const data = ruleData(input);
+  // Qoida tayinlovi nomi va parametrlari qoida bilan birga yangilanadi
+  await prisma.learningAssignmentBatch.updateMany({
+    where: { ruleId: rule.id },
+    data: { name: data.name, reason: data.reason, reasonText: data.reasonText, note: data.note, dueDate: data.dueDate, dueInDays: data.dueInDays },
+  });
+  return prisma.learningAssignmentRule.update({ where: { id: rule.id }, data });
 }
 
 export async function runRuleNow(auth: AuthContext, ruleId: string) {

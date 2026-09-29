@@ -38,6 +38,8 @@ const idList = z.array(z.string().min(1)).max(5000).optional();
 
 const assignSchema = z
   .object({
+    name: z.string().trim().max(200).optional(),
+    batchId: z.string().min(1).optional(),
     materialId: z.string().min(1),
     audience: z.object({
       allOrganization: z.boolean().optional(),
@@ -67,6 +69,7 @@ learningAdminRouter.post('/assignments', async (req, res) => {
 
 const listSchema = z.object({
   materialId: z.string().min(1).optional(),
+  batchId: z.string().min(1).optional(),
   departmentId: z.string().min(1).optional(),
   state: z.enum(['NOT_STARTED', 'IN_PROGRESS', 'COMPLETED', 'OVERDUE', 'CANCELLED']).optional(),
   search: z.string().trim().optional(),
@@ -75,6 +78,36 @@ const listSchema = z.object({
 learningAdminRouter.get('/assignments', async (req, res) => {
   const query = listSchema.parse(req.query);
   res.json(await assignmentService.listAssignments(req.auth!, query));
+});
+
+// Tayinlovlar (partiyalar)
+const batchListSchema = z.object({
+  materialId: z.string().min(1).optional(),
+  source: z.enum(['MANUAL', 'RULE', 'FILE']).optional(),
+  state: z.enum(['IN_PROGRESS', 'COMPLETED', 'HAS_OVERDUE', 'CANCELLED']).optional(),
+  search: z.string().trim().optional(),
+});
+
+learningAdminRouter.get('/batches', async (req, res) => {
+  const query = batchListSchema.parse(req.query);
+  res.json(await assignmentService.listBatches(req.auth!, query));
+});
+
+learningAdminRouter.get('/batches/:id', async (req, res) => {
+  res.json(await assignmentService.getBatch(req.auth!, req.params.id));
+});
+
+learningAdminRouter.patch('/batches/:id', async (req, res) => {
+  const body = z
+    .object({ name: z.string().trim().min(1).max(200).optional(), dueDate: dateSchema.nullable().optional() })
+    .parse(req.body);
+  if (body.name) await assignmentService.renameBatch(req.auth!, req.params.id, body.name);
+  const due = body.dueDate !== undefined ? await assignmentService.updateBatchDueDate(req.auth!, req.params.id, body.dueDate) : null;
+  res.json({ ok: true, updated: due?.updated ?? 0 });
+});
+
+learningAdminRouter.post('/batches/:id/cancel', async (req, res) => {
+  res.json(await assignmentService.cancelBatch(req.auth!, req.params.id));
 });
 
 learningAdminRouter.post('/assignments/:id/cancel', async (req, res) => {

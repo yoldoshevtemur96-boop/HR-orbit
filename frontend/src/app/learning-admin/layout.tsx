@@ -34,8 +34,8 @@ function LearningAdminFrame({ children }: { children: React.ReactNode }) {
   // /learning-admin/assignments/new -> Tayinlovlar / Yangi
   const segments = pathname.replace(/^\/learning-admin\/?/, '').split('/').filter(Boolean);
   const crumbs = segments.map((segment, i) => ({
-    // Noma'lum segment — yozuv id'si (masalan /catalog/<id>) => tahrirlash sahifasi
-    label: SEGMENT_LABEL[segment] ?? 'Tahrirlash',
+    // Noma'lum segment — yozuv id'si: tayinlov sahifasi yoki tahrirlash sahifasi
+    label: SEGMENT_LABEL[segment] ?? (segments[i - 1] === 'assignments' ? 'Tayinlov' : 'Tahrirlash'),
     href: '/learning-admin/' + segments.slice(0, i + 1).join('/'),
   }));
   const isHub = crumbs.length === 0;

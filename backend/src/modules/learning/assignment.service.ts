@@ -84,6 +84,8 @@ async function resolveAudience(auth: AuthContext, scope: Scope, audience: Audien
 }
 
 export interface AssignInput {
+  name?: string; // tayinlov nomi (bo'sh bo'lsa — "Material — sana")
+  batchId?: string; // mavjud tayinlovga xodim qo'shish
   materialId: string;
   audience: AudienceInput;
   reason: LearningAssignmentReason;
@@ -194,6 +196,7 @@ export interface PerformAssignInput {
   reasonText?: string | null;
   source: LearningAssignmentSource;
   ruleId?: string | null;
+  batchId?: string | null;
 }
 
 // Tayinlovlarni yaratadi, avval tugatganlarning progressini nollaydi va
@@ -221,6 +224,7 @@ export async function performAssign(input: PerformAssignInput) {
         reasonText: input.reason === 'OTHER' ? input.reasonText?.trim() || null : null,
         source: input.source,
         ruleId: input.ruleId ?? null,
+        batchId: input.batchId ?? null,
       })),
       skipDuplicates: true, // parallel so'rovda faol tayinlov unique indeksi bilan to'qnashsa
     });
@@ -248,13 +252,98 @@ export async function performAssign(input: PerformAssignInput) {
   });
 }
 
+// Auditoriyaning qisqa tavsifi — tayinlovlar ro'yxatida "Kimga" ustuni uchun
+async function describeAudience(organizationId: string, audience: AudienceInput) {
+  if (audience.allOrganization) return 'Butun tashkilot';
+  const [departments, positions, branches] = await Promise.all([
+    audience.departmentIds?.length
+      ? prisma.department.findMany({ where: { organizationId, id: { in: audience.departmentIds } }, select: { name: true } })
+      : [],
+    audience.positionIds?.length
+      ? prisma.position.findMany({ where: { organizationId, id: { in: audience.positionIds } }, select: { name: true } })
+      : [],
+    audience.branchIds?.length
+      ? prisma.branch.findMany({ where: { organizationId, id: { in: audience.branchIds } }, select: { name: true } })
+      : [],
+  ]);
+  const parts = [...departments, ...positions, ...branches].map((x) => x.name);
+  if (audience.employeeIds?.length) parts.push(`${audience.employeeIds.length} ta xodim`);
+  return parts.join(', ') || null;
+}
+
+// Rahbar: tayinlovni ko'rishi uchun unda o'z xodimi bo'lishi kifoya;
+// o'zgartirish (nom, muddat, bekor qilish, xodim qo'shish) — faqat o'zi
+// yaratgan tayinlovda. HR — hammasi.
+async function getBatchInScope(auth: AuthContext, batchId: string, forWrite = false) {
+  const batch = await prisma.learningAssignmentBatch.findFirst({
+    where: { id: batchId, organizationId: auth.organizationId },
+    include: { material: { select: { id: true, title: true, type: true, status: true } }, rule: { select: { id: true, name: true, status: true } } },
+  });
+  if (!batch) throw AppError.notFound('Tayinlov topilmadi');
+  if (isLearningAdmin(auth.role)) return batch;
+  if (forWrite) {
+    if (batch.createdByUserId !== auth.userId) throw AppError.forbidden("Bu tayinlovni faqat uni yaratgan yoki HR o'zgartira oladi");
+    return batch;
+  }
+  const scope = await getScope(auth);
+  const visible = await prisma.learningAssignment.count({ where: { batchId: batch.id, employeeId: { in: [...scope.employeeIds] } } });
+  if (visible === 0) throw AppError.forbidden();
+  return batch;
+}
+
 export async function createAssignments(auth: AuthContext, input: AssignInput) {
-  if (input.reason === 'OTHER' && !input.reasonText?.trim()) {
+  // Mavjud tayinlovga xodim qo'shish — material va parametrlar tayinlovdan olinadi
+  const batch = input.batchId ? await getBatchInScope(auth, input.batchId, true) : null;
+  if (batch?.source === 'RULE') throw AppError.badRequest("Qoida tayinloviga qo'lda xodim qo'shib bo'lmaydi");
+  const effective: AssignInput = batch
+    ? {
+        ...input,
+        materialId: batch.materialId,
+        reason: batch.reason,
+        reasonText: batch.reasonText ?? undefined,
+        note: batch.note ?? undefined,
+        dueDate: batch.dueDate ?? undefined,
+        dueInDays: batch.dueDate ? undefined : batch.dueInDays ?? undefined,
+      }
+    : input;
+
+  if (effective.reason === 'OTHER' && !effective.reasonText?.trim()) {
     throw AppError.badRequest('"Boshqa" sabab uchun izoh yozing');
   }
-  const plan = await planAssignment(auth, input);
+  const plan = await planAssignment(auth, effective);
   if (plan.toAssign.length === 0) {
     throw AppError.badRequest("Tayinlanadigan xodim yo'q — hammasida faol tayinlov bor yoki yaqinda tugatgan");
+  }
+
+  const dueDate = resolveDueDate(effective);
+  const batchId =
+    batch?.id ??
+    (
+      await prisma.learningAssignmentBatch.create({
+        data: {
+          organizationId: auth.organizationId,
+          name: input.name?.trim() || `${plan.material.title} — ${formatDateUz(new Date())}`,
+          materialId: plan.material.id,
+          source: 'MANUAL',
+          reason: effective.reason,
+          reasonText: effective.reason === 'OTHER' ? effective.reasonText?.trim() || null : null,
+          note: effective.note?.trim() || null,
+          dueDate: effective.dueDate ?? null,
+          dueInDays: effective.dueDate ? null : effective.dueInDays ?? null,
+          audienceSummary: await describeAudience(auth.organizationId, effective.audience),
+          createdByUserId: auth.userId,
+        },
+      })
+    ).id;
+
+  if (batch) {
+    const added = await describeAudience(auth.organizationId, effective.audience);
+    if (added && !(batch.audienceSummary ?? '').includes(added)) {
+      await prisma.learningAssignmentBatch.update({
+        where: { id: batch.id },
+        data: { audienceSummary: batch.audienceSummary ? `${batch.audienceSummary}, ${added}` : added },
+      });
+    }
   }
 
   const created = await performAssign({
@@ -263,14 +352,16 @@ export async function createAssignments(auth: AuthContext, input: AssignInput) {
     employees: plan.toAssign,
     progressById: plan.progressById,
     assignedByUserId: auth.userId,
-    dueDate: resolveDueDate(input),
-    note: input.note,
-    reason: input.reason,
-    reasonText: input.reasonText,
+    dueDate,
+    note: effective.note,
+    reason: effective.reason,
+    reasonText: effective.reasonText,
     source: 'MANUAL',
+    batchId,
   });
 
   return {
+    batchId,
     assignedCount: created,
     skippedActiveCount: plan.skippedActive.length,
     skippedCompletedCount: plan.skippedCompleted.length,
@@ -285,7 +376,7 @@ export type AssignmentState = 'NOT_STARTED' | 'IN_PROGRESS' | 'COMPLETED' | 'OVE
 
 export async function listAssignments(
   auth: AuthContext,
-  query: { materialId?: string; departmentId?: string; state?: AssignmentState; search?: string },
+  query: { materialId?: string; batchId?: string; departmentId?: string; state?: AssignmentState; search?: string },
 ) {
   const scope = await getScope(auth);
   const employeeWhere: Prisma.EmployeeWhereInput = { organizationId: auth.organizationId, ...scopeWhere(scope) };
@@ -307,8 +398,13 @@ export async function listAssignments(
       organizationId: auth.organizationId,
       employeeId: { in: employees.map((e) => e.id) },
       ...(query.materialId && { materialId: query.materialId }),
+      ...(query.batchId && { batchId: query.batchId }),
     },
-    include: { material: { select: { id: true, title: true, type: true } }, rule: { select: { id: true, name: true } } },
+    include: {
+      material: { select: { id: true, title: true, type: true } },
+      rule: { select: { id: true, name: true } },
+      batch: { select: { id: true, name: true } },
+    },
     orderBy: { createdAt: 'desc' },
     take: 2000,
   });
@@ -343,6 +439,7 @@ export async function listAssignments(
       note: a.note,
       source: a.source,
       rule: a.rule,
+      batch: a.batch,
       dueDate: a.dueDate,
       createdAt: a.createdAt,
       cancelledAt: a.cancelledAt,
@@ -494,4 +591,163 @@ export async function sendDueReminders(organizationId: string, employeeId: strin
       data: { reminderSentAt: now },
     }),
   ]);
+}
+
+// ---------------------------------------------------------------------------
+// Tayinlovlar (partiyalar): ro'yxat va boshqaruv
+// ---------------------------------------------------------------------------
+
+export type BatchState = 'IN_PROGRESS' | 'COMPLETED' | 'HAS_OVERDUE' | 'CANCELLED';
+
+// Har bir tayinlov bo'yicha: xodimlar soni, tugatgan, muddati o'tgan,
+// bekor qilingan, bajarilish foizi. Rahbar faqat o'z xodimlari bo'yicha ko'radi.
+export async function listBatches(
+  auth: AuthContext,
+  query: { materialId?: string; source?: LearningAssignmentSource; state?: BatchState; search?: string },
+) {
+  const scope = await getScope(auth);
+  const employees = await prisma.employee.findMany({
+    where: { organizationId: auth.organizationId, ...scopeWhere(scope) },
+    select: { id: true },
+  });
+  const employeeIds = employees.map((e) => e.id);
+
+  const assignments = await prisma.learningAssignment.findMany({
+    where: {
+      organizationId: auth.organizationId,
+      employeeId: { in: employeeIds },
+      batchId: { not: null },
+      ...(query.materialId && { materialId: query.materialId }),
+      ...(query.source && { source: query.source }),
+    },
+    select: { batchId: true, employeeId: true, materialId: true, status: true, dueDate: true },
+  });
+  const batchIds = [...new Set(assignments.map((a) => a.batchId!))];
+  const search = query.search?.trim();
+  const batches = await prisma.learningAssignmentBatch.findMany({
+    where: {
+      id: { in: batchIds },
+      ...(search && {
+        OR: [
+          { name: { contains: search, mode: 'insensitive' } },
+          { material: { title: { contains: search, mode: 'insensitive' } } },
+        ],
+      }),
+    },
+    include: { material: { select: { id: true, title: true, type: true } }, rule: { select: { id: true, name: true, status: true } } },
+    orderBy: { createdAt: 'desc' },
+  });
+
+  const completedRows = await prisma.learningProgress.findMany({
+    where: {
+      organizationId: auth.organizationId,
+      status: 'COMPLETED',
+      employeeId: { in: [...new Set(assignments.map((a) => a.employeeId))] },
+      materialId: { in: [...new Set(assignments.map((a) => a.materialId))] },
+    },
+    select: { employeeId: true, materialId: true },
+  });
+  const completedKeys = new Set(completedRows.map((c) => `${c.employeeId}:${c.materialId}`));
+  const creators = await prisma.user.findMany({
+    where: { id: { in: batches.map((b) => b.createdByUserId).filter(Boolean) as string[] } },
+    select: { id: true, email: true, employee: { select: { fullName: true } } },
+  });
+  const creatorName = new Map(creators.map((u) => [u.id, u.employee?.fullName ?? u.email]));
+
+  const now = new Date();
+  const rows = batches.map((b) => {
+    const own = assignments.filter((a) => a.batchId === b.id);
+    const live = own.filter((a) => a.status === 'ACTIVE');
+    const completed = live.filter((a) => completedKeys.has(`${a.employeeId}:${a.materialId}`)).length;
+    const overdue = live.filter((a) => !completedKeys.has(`${a.employeeId}:${a.materialId}`) && a.dueDate && a.dueDate < now).length;
+    const cancelled = own.length - live.length;
+    const state: BatchState =
+      live.length === 0 ? 'CANCELLED' : completed === live.length ? 'COMPLETED' : overdue > 0 ? 'HAS_OVERDUE' : 'IN_PROGRESS';
+    return {
+      id: b.id,
+      name: b.name,
+      source: b.source,
+      material: b.material,
+      rule: b.rule,
+      reason: b.reason,
+      reasonText: b.reasonText,
+      dueDate: b.dueDate,
+      dueInDays: b.dueInDays,
+      audienceSummary: b.audienceSummary,
+      createdAt: b.createdAt,
+      createdBy: b.createdByUserId ? creatorName.get(b.createdByUserId) ?? null : null,
+      total: live.length,
+      completed,
+      overdue,
+      cancelled,
+      completionPercent: live.length ? Math.round((completed / live.length) * 100) : 0,
+      state,
+    };
+  });
+
+  const counts: Record<BatchState, number> = { IN_PROGRESS: 0, COMPLETED: 0, HAS_OVERDUE: 0, CANCELLED: 0 };
+  for (const r of rows) counts[r.state] += 1;
+  return { counts, rows: query.state ? rows.filter((r) => r.state === query.state) : rows };
+}
+
+export async function getBatch(auth: AuthContext, batchId: string) {
+  const batch = await getBatchInScope(auth, batchId);
+  const creator = batch.createdByUserId
+    ? await prisma.user.findUnique({ where: { id: batch.createdByUserId }, select: { email: true, employee: { select: { fullName: true } } } })
+    : null;
+  return {
+    ...batch,
+    createdBy: creator ? creator.employee?.fullName ?? creator.email : null,
+    canEdit: isLearningAdmin(auth.role) || batch.createdByUserId === auth.userId,
+  };
+}
+
+async function batchActiveUnfinished(auth: AuthContext, batchId: string) {
+  const scope = await getScope(auth);
+  const active = await prisma.learningAssignment.findMany({
+    where: {
+      organizationId: auth.organizationId,
+      batchId,
+      status: 'ACTIVE',
+      ...(scope.all ? {} : { employeeId: { in: [...scope.employeeIds] } }),
+    },
+    select: { id: true, employeeId: true, materialId: true },
+  });
+  const completed = await prisma.learningProgress.findMany({
+    where: { employeeId: { in: active.map((a) => a.employeeId) }, materialId: { in: [...new Set(active.map((a) => a.materialId))] }, status: 'COMPLETED' },
+    select: { employeeId: true, materialId: true },
+  });
+  const done = new Set(completed.map((c) => `${c.employeeId}:${c.materialId}`));
+  return active.filter((a) => !done.has(`${a.employeeId}:${a.materialId}`));
+}
+
+// Butun tayinlovning muddatini o'zgartirish (tugatilmaganlar uchun)
+export async function updateBatchDueDate(auth: AuthContext, batchId: string, dueDate: Date | null) {
+  const batch = await getBatchInScope(auth, batchId, true);
+  const targets = await batchActiveUnfinished(auth, batch.id);
+  await prisma.$transaction([
+    prisma.learningAssignmentBatch.update({ where: { id: batch.id }, data: { dueDate, dueInDays: null } }),
+    prisma.learningAssignment.updateMany({
+      where: { id: { in: targets.map((t) => t.id) } },
+      data: { dueDate, reminderSentAt: null },
+    }),
+  ]);
+  return { updated: targets.length };
+}
+
+// Butun tayinlovni bekor qilish (tugatganlarniki qoladi)
+export async function cancelBatch(auth: AuthContext, batchId: string) {
+  const batch = await getBatchInScope(auth, batchId, true);
+  if (batch.source === 'RULE') throw AppError.badRequest("Qoida tayinlovini qoidalar bo'limida to'xtating");
+  const targets = await batchActiveUnfinished(auth, batch.id);
+  const result = await prisma.learningAssignment.updateMany({
+    where: { id: { in: targets.map((t) => t.id) } },
+    data: { status: 'CANCELLED', cancelledAt: new Date(), cancelledByUserId: auth.userId },
+  });
+  return { cancelled: result.count };
+}
+
+export async function renameBatch(auth: AuthContext, batchId: string, name: string) {
+  const batch = await getBatchInScope(auth, batchId, true);
+  return prisma.learningAssignmentBatch.update({ where: { id: batch.id }, data: { name: name.trim() } });
 }

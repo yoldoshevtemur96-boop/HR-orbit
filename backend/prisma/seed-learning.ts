@@ -233,6 +233,31 @@ export async function seedLearning(prisma: PrismaClient, organizationId: string)
   });
   const hrUser = await prisma.user.findFirst({ where: { organizationId, email: 'hr@demo.uz' }, select: { id: true } });
 
+  // Demo tayinlovlar — "Tayinlovlar" ro'yxatida bittadan qator bo'lib chiqadi
+  const securityBatch = await prisma.learningAssignmentBatch.create({
+    data: {
+      organizationId,
+      name: 'Axborot xavfsizligi — barcha uchun majburiy',
+      materialId: byTitle('Axborot xavfsizligi: har bir xodim bilishi shart').id,
+      reason: 'LEGAL',
+      note: 'Barcha xodimlar uchun majburiy',
+      dueDate: daysFromNow(10),
+      audienceSummary: 'Demo xodimlar',
+      createdByUserId: hrUser?.id,
+    },
+  });
+  const excelBatch = await prisma.learningAssignmentBatch.create({
+    data: {
+      organizationId,
+      name: 'Excel — moliyaviy tahlil',
+      materialId: byTitle('Excel: moliyaviy tahlil asoslari').id,
+      reason: 'DEVELOPMENT',
+      dueDate: daysFromNow(30),
+      audienceSummary: 'Demo xodimlar',
+      createdByUserId: hrUser?.id,
+    },
+  });
+
   const inProgress: [string, number][] = [
     ['Inson va biznes rivoji uchun muhit arxitekturasi', 24],
     ['Mijozni ishlab chiqish jarayoniga jalb qiling', 72],
@@ -278,6 +303,8 @@ export async function seedLearning(prisma: PrismaClient, organizationId: string)
           assignedByUserId: hrUser?.id,
           dueDate: daysFromNow(10),
           note: 'Barcha xodimlar uchun majburiy',
+          reason: 'LEGAL',
+          batchId: securityBatch.id,
         },
         {
           organizationId,
@@ -285,6 +312,7 @@ export async function seedLearning(prisma: PrismaClient, organizationId: string)
           materialId: byTitle('Excel: moliyaviy tahlil asoslari').id,
           assignedByUserId: hrUser?.id,
           dueDate: daysFromNow(30),
+          batchId: excelBatch.id,
         },
       ],
     });
