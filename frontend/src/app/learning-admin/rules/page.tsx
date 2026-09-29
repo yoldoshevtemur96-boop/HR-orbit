@@ -24,6 +24,7 @@ function audienceText(rule: AssignmentRuleRow) {
   if (rule.audience.departments.length) parts.push(`Bo'lim: ${rule.audience.departments.join(', ')}`);
   if (rule.audience.positions.length) parts.push(`Lavozim: ${rule.audience.positions.join(', ')}`);
   if (rule.audience.branches.length) parts.push(`Filial: ${rule.audience.branches.join(', ')}`);
+  if (rule.employeeCodes?.length) parts.push(`${rule.employeeCodes.length} ta tabel raqami`);
   const base = parts.join(' yoki ') || '—';
   return rule.audience.hiredWithinDays ? `${base} · faqat ishga kirganiga ${rule.audience.hiredWithinDays} kun bo'lmaganlar` : base;
 }
@@ -228,6 +229,10 @@ function Rules() {
                     <p className="text-xs text-stone-400">
                       {rule.reason === 'OTHER' && rule.reasonText ? rule.reasonText : ASSIGNMENT_REASON_LABEL[rule.reason]} · {dueText(rule)}
                       {rule.skipIfCompletedWithinDays && ` · ${rule.skipIfCompletedWithinDays} kun ichida o'tganlarga tayinlanmaydi`}
+                      {rule.remindBeforeDays != null && ` · eslatma: ${rule.remindBeforeDays} kun oldin`}
+                      {rule.remindAfterDays != null && ` · ${rule.remindAfterDays} kun keyin`}
+                      {!rule.notifyOnAssign && ' · bildirishnomasiz'}
+                      {rule.resetProgress && ' · progress nollanadi'}
                       {rule.lastRunAt && ` · oxirgi ishga tushgan: ${new Date(rule.lastRunAt).toLocaleString('uz-UZ')}`}
                     </p>
                   </div>

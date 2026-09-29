@@ -43,6 +43,13 @@ export interface RuleInput {
   positionIds?: string[];
   branchIds?: string[];
   hiredWithinDays?: number | null;
+  employeeCodes?: string[];
+  hiredFrom?: Date | null;
+  hiredTo?: Date | null;
+  notifyOnAssign?: boolean;
+  remindBeforeDays?: number | null;
+  remindAfterDays?: number | null;
+  resetProgress?: boolean;
   reason: LearningAssignmentReason;
   reasonText?: string | null;
   note?: string | null;
@@ -54,7 +61,15 @@ export interface RuleInput {
 
 type RuleCriteria = Pick<
   LearningAssignmentRule,
-  'organizationId' | 'allOrganization' | 'departmentIds' | 'positionIds' | 'branchIds' | 'hiredWithinDays'
+  | 'organizationId'
+  | 'allOrganization'
+  | 'departmentIds'
+  | 'positionIds'
+  | 'branchIds'
+  | 'hiredWithinDays'
+  | 'employeeCodes'
+  | 'hiredFrom'
+  | 'hiredTo'
 >;
 
 // Qoida auditoriyasi. withHireFilter=false — "shartdan chiqdimi?" tekshiruvi
@@ -64,9 +79,13 @@ function ruleEmployeeWhere(rule: RuleCriteria, withHireFilter: boolean, onlyEmpl
   if (rule.departmentIds.length) or.push({ departmentId: { in: rule.departmentIds } });
   if (rule.positionIds.length) or.push({ positionId: { in: rule.positionIds } });
   if (rule.branchIds.length) or.push({ branchId: { in: rule.branchIds } });
+  if (rule.employeeCodes.length) or.push({ employeeCode: { in: rule.employeeCodes } });
   if (or.length === 0) return null;
 
   const and: Prisma.EmployeeWhereInput[] = [{ OR: or }];
+  // Ishga kirgan sana oralig'i — qat'iy atribut (shartdan chiqish tekshiruvida ham)
+  if (rule.hiredFrom) and.push({ hiredAt: { gte: rule.hiredFrom } });
+  if (rule.hiredTo) and.push({ hiredAt: { lte: rule.hiredTo } });
   if (withHireFilter && rule.hiredWithinDays) {
     and.push({ hiredAt: { gte: new Date(Date.now() - rule.hiredWithinDays * 24 * 60 * 60 * 1000) } });
   }
@@ -171,6 +190,10 @@ export async function runRule(ruleId: string, onlyEmployeeId?: string, onlyMater
       source: 'RULE',
       ruleId: rule.id,
       batchId: batch?.id ?? null,
+      notify: rule.notifyOnAssign,
+      remindBeforeDays: rule.remindBeforeDays,
+      remindAfterDays: rule.remindAfterDays,
+      resetProgress: rule.resetProgress,
     });
 
     if (rule.type === 'PERMANENT' && rule.cancelOutOfScope) {
@@ -265,8 +288,17 @@ async function validateRuleInput(auth: AuthContext, input: RuleInput) {
     throw AppError.badRequest('"Boshqa" sabab uchun izoh yozing');
   }
   const hasAudience =
-    input.allOrganization || input.departmentIds?.length || input.positionIds?.length || input.branchIds?.length;
-  if (!hasAudience) throw AppError.badRequest('Maqsadli guruhni tanlang: butun tashkilot, bo‘lim, lavozim yoki filial');
+    input.allOrganization ||
+    input.departmentIds?.length ||
+    input.positionIds?.length ||
+    input.branchIds?.length ||
+    input.employeeCodes?.length;
+  if (!hasAudience) {
+    throw AppError.badRequest('Maqsadli guruhni tanlang: butun tashkilot, bo‘lim, lavozim, filial yoki tabel raqamlari');
+  }
+  if (input.hiredFrom && input.hiredTo && input.hiredFrom > input.hiredTo) {
+    throw AppError.badRequest("Ishga kirgan sana oralig'i noto'g'ri");
+  }
   if (input.type === 'PERMANENT' && input.dueDate) {
     throw AppError.badRequest("Doimiy qoidada aniq sana bo'lmaydi — 'N kun ichida' muddatidan foydalaning");
   }
@@ -283,6 +315,13 @@ function ruleData(input: RuleInput) {
     positionIds: input.allOrganization ? [] : input.positionIds ?? [],
     branchIds: input.allOrganization ? [] : input.branchIds ?? [],
     hiredWithinDays: input.hiredWithinDays ?? null,
+    employeeCodes: [...new Set((input.employeeCodes ?? []).map((c) => c.trim()).filter(Boolean))].slice(0, 2000),
+    hiredFrom: input.hiredFrom ?? null,
+    hiredTo: input.hiredTo ?? null,
+    notifyOnAssign: input.notifyOnAssign ?? true,
+    remindBeforeDays: input.remindBeforeDays === undefined ? 3 : input.remindBeforeDays,
+    remindAfterDays: input.remindAfterDays ?? null,
+    resetProgress: Boolean(input.resetProgress),
     reason: input.reason,
     reasonText: input.reason === 'OTHER' ? input.reasonText?.trim() ?? null : null,
     note: input.note?.trim() || null,
@@ -300,6 +339,15 @@ export async function previewRule(auth: AuthContext, input: RuleInput) {
   await validateRuleInput(auth, input);
   const criteria = { organizationId: auth.organizationId, ...ruleData(input) };
   const audience = await resolveRuleAudience(criteria, true);
+  // Kiritilgan tabel raqamlaridan tashkilotda topilmaganlari (xato yozilgan bo'lishi mumkin)
+  const unmatchedCodes = criteria.employeeCodes.length
+    ? await prisma.employee
+        .findMany({ where: { organizationId: auth.organizationId, employeeCode: { in: criteria.employeeCodes } }, select: { employeeCode: true } })
+        .then((found) => {
+          const set = new Set(found.map((f) => f.employeeCode));
+          return criteria.employeeCodes.filter((c) => !set.has(c));
+        })
+    : [];
   const summarize = (list: typeof audience) =>
     list.slice(0, 200).map((e) => ({ id: e.id, fullName: e.fullName, employeeCode: e.employeeCode, department: e.department?.name ?? null }));
   if (!input.materialId) {
@@ -311,6 +359,7 @@ export async function previewRule(auth: AuthContext, input: RuleInput) {
       toAssign: summarize(audience),
       skippedActive: [],
       skippedCompleted: [],
+      unmatchedCodes,
     };
   }
   const split = await filterCandidates(auth.organizationId, input.materialId, audience, input.skipIfCompletedWithinDays);
@@ -322,6 +371,7 @@ export async function previewRule(auth: AuthContext, input: RuleInput) {
     toAssign: summarize(split.toAssign),
     skippedActive: summarize(split.skippedActive),
     skippedCompleted: summarize(split.skippedCompleted),
+    unmatchedCodes,
   };
 }
 

@@ -137,6 +137,18 @@ const ruleSchema = z
     positionIds: idList,
     branchIds: idList,
     hiredWithinDays: z.coerce.number().int().min(1).max(3650).nullable().optional(),
+    employeeCodes: z.array(z.string().trim().min(1).max(50)).max(2000).optional(),
+    hiredFrom: z
+      .string()
+      .regex(/^\d{4}-\d{2}-\d{2}$/)
+      .transform((v) => new Date(`${v}T00:00:00.000+05:00`))
+      .nullable()
+      .optional(),
+    hiredTo: dateSchema.nullable().optional(),
+    notifyOnAssign: z.boolean().optional(),
+    remindBeforeDays: z.coerce.number().int().min(1).max(365).nullable().optional(),
+    remindAfterDays: z.coerce.number().int().min(1).max(365).nullable().optional(),
+    resetProgress: z.boolean().optional(),
     reason: z.enum(['LEGAL', 'POSITION', 'ONBOARDING', 'DEVELOPMENT', 'OTHER']),
     reasonText: z.string().trim().max(300).optional(),
     note: z.string().trim().max(1000).optional(),

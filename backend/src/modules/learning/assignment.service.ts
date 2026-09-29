@@ -197,6 +197,10 @@ export interface PerformAssignInput {
   source: LearningAssignmentSource;
   ruleId?: string | null;
   batchId?: string | null;
+  notify?: boolean; // tayinlanganda bildirishnoma (standart — ha)
+  remindBeforeDays?: number | null; // standart — 3
+  remindAfterDays?: number | null;
+  resetProgress?: boolean; // boshlaganlarning progressi ham noldan
 }
 
 // Tayinlovlarni yaratadi, avval tugatganlarning progressini nollaydi va
@@ -205,7 +209,11 @@ export async function performAssign(input: PerformAssignInput) {
   if (input.employees.length === 0) return 0;
   const employeeIds = input.employees.map((e) => e.id);
   // Avval tugatgan xodim qayta tayinlansa — yangi urinish: progress noldan.
-  const completedBefore = employeeIds.filter((id) => input.progressById.get(id)?.status === 'COMPLETED');
+  // resetProgress — boshlab qo'yganlarniki ham noldan.
+  const completedBefore = employeeIds.filter((id) => {
+    const status = input.progressById.get(id)?.status;
+    return status === 'COMPLETED' || (input.resetProgress && status === 'IN_PROGRESS');
+  });
 
   const message =
     `Sizga yangi o'quv material tayinlandi: "${input.material.title}"` +
@@ -225,6 +233,8 @@ export async function performAssign(input: PerformAssignInput) {
         source: input.source,
         ruleId: input.ruleId ?? null,
         batchId: input.batchId ?? null,
+        remindBeforeDays: input.remindBeforeDays === undefined ? 3 : input.remindBeforeDays,
+        remindAfterDays: input.remindAfterDays ?? null,
       })),
       skipDuplicates: true, // parallel so'rovda faol tayinlov unique indeksi bilan to'qnashsa
     });
@@ -238,7 +248,7 @@ export async function performAssign(input: PerformAssignInput) {
 
     await tx.notification.createMany({
       data: input.employees
-        .filter((e) => e.userId)
+        .filter((e) => e.userId && input.notify !== false)
         .map((e) => ({
           organizationId: input.organizationId,
           userId: e.userId!,
@@ -479,7 +489,7 @@ export async function updateAssignmentDueDate(auth: AuthContext, assignmentId: s
   return prisma.learningAssignment.update({
     where: { id: assignmentId },
     // Muddat o'zgarsa — eslatma yangi muddat bo'yicha qayta yuboriladi
-    data: { dueDate, reminderSentAt: null },
+    data: { dueDate, reminderSentAt: null, reminderAfterSentAt: null },
   });
 }
 
@@ -552,44 +562,75 @@ export async function listAssignableMaterials(auth: AuthContext) {
 // Muddat eslatmasi
 // ---------------------------------------------------------------------------
 
-// Cron yo'q (Render bepul rejasi uxlaydi) — eslatma xodim o'qish sahifasini
-// ochganda, o'zi uchun tekshiriladi: muddatga 3 kun yoki kamroq qolgan
-// (yoki o'tib ketgan), hali tugatilmagan va eslatma yuborilmagan tayinlovlar.
+// Cron yo'q (Render bepul rejasi uxlaydi) — eslatmalar xodim o'qish sahifasini
+// ochganda, o'zi uchun tekshiriladi. Har bir tayinlov o'z sozlamasi bilan:
+// - "oldin": muddatga remindBeforeDays yoki kamroq kun qolganda (bir marta);
+// - "keyin": muddatdan remindAfterDays kun o'tganda (bir marta).
+// Tugatilgan materiallar uchun eslatma yuborilmaydi.
 export async function sendDueReminders(organizationId: string, employeeId: string, userId: string) {
-  const soon = new Date(Date.now() + REMINDER_DAYS_BEFORE_DUE * 24 * 60 * 60 * 1000);
-  const due = await prisma.learningAssignment.findMany({
-    where: { organizationId, employeeId, status: 'ACTIVE', reminderSentAt: null, dueDate: { not: null, lte: soon } },
+  const now = new Date();
+  const day = 24 * 60 * 60 * 1000;
+  const candidates = await prisma.learningAssignment.findMany({
+    where: {
+      organizationId,
+      employeeId,
+      status: 'ACTIVE',
+      dueDate: { not: null },
+      OR: [
+        { reminderSentAt: null, remindBeforeDays: { not: null } },
+        { reminderAfterSentAt: null, remindAfterDays: { not: null } },
+      ],
+    },
     include: { material: { select: { id: true, title: true } } },
   });
-  if (due.length === 0) return;
+  if (candidates.length === 0) return;
 
   const completed = await prisma.learningProgress.findMany({
-    where: { employeeId, materialId: { in: due.map((a) => a.materialId) }, status: 'COMPLETED' },
+    where: { employeeId, materialId: { in: candidates.map((a) => a.materialId) }, status: 'COMPLETED' },
     select: { materialId: true },
   });
   const completedIds = new Set(completed.map((c) => c.materialId));
-  const pending = due.filter((a) => !completedIds.has(a.materialId));
-  if (pending.length === 0) return;
 
-  const now = new Date();
+  const before = candidates.filter(
+    (a) =>
+      !completedIds.has(a.materialId) &&
+      a.reminderSentAt === null &&
+      a.remindBeforeDays !== null &&
+      a.dueDate! > now &&
+      a.dueDate!.getTime() - a.remindBeforeDays * day <= now.getTime(),
+  );
+  const after = candidates.filter(
+    (a) =>
+      !completedIds.has(a.materialId) &&
+      a.reminderAfterSentAt === null &&
+      a.remindAfterDays !== null &&
+      a.dueDate!.getTime() + a.remindAfterDays * day <= now.getTime(),
+  );
+  if (before.length === 0 && after.length === 0) return;
+
   await prisma.$transaction([
     prisma.notification.createMany({
-      data: pending.map((a) => ({
-        organizationId,
-        userId,
-        type: 'LEARNING_REMINDER' as const,
-        message:
-          a.dueDate! < now
-            ? `"${a.material.title}" materialini o'tish muddati o'tib ketdi (${formatDateUz(a.dueDate!)})`
-            : `"${a.material.title}" materialini ${formatDateUz(a.dueDate!)} gacha tugatishingiz kerak`,
-        entityType: 'LearningMaterial',
-        entityId: a.material.id,
-      })),
+      data: [
+        ...before.map((a) => ({
+          organizationId,
+          userId,
+          type: 'LEARNING_REMINDER' as const,
+          message: `"${a.material.title}" materialini ${formatDateUz(a.dueDate!)} gacha tugatishingiz kerak`,
+          entityType: 'LearningMaterial',
+          entityId: a.material.id,
+        })),
+        ...after.map((a) => ({
+          organizationId,
+          userId,
+          type: 'LEARNING_REMINDER' as const,
+          message: `"${a.material.title}" materialini o'tish muddati o'tib ketdi (${formatDateUz(a.dueDate!)}) — iltimos, tugating`,
+          entityType: 'LearningMaterial',
+          entityId: a.material.id,
+        })),
+      ],
     }),
-    prisma.learningAssignment.updateMany({
-      where: { id: { in: pending.map((a) => a.id) } },
-      data: { reminderSentAt: now },
-    }),
+    prisma.learningAssignment.updateMany({ where: { id: { in: before.map((a) => a.id) } }, data: { reminderSentAt: now } }),
+    prisma.learningAssignment.updateMany({ where: { id: { in: after.map((a) => a.id) } }, data: { reminderAfterSentAt: now } }),
   ]);
 }
 
@@ -729,7 +770,7 @@ export async function updateBatchDueDate(auth: AuthContext, batchId: string, due
     prisma.learningAssignmentBatch.update({ where: { id: batch.id }, data: { dueDate, dueInDays: null } }),
     prisma.learningAssignment.updateMany({
       where: { id: { in: targets.map((t) => t.id) } },
-      data: { dueDate, reminderSentAt: null },
+      data: { dueDate, reminderSentAt: null, reminderAfterSentAt: null },
     }),
   ]);
   return { updated: targets.length };

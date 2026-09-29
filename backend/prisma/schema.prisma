@@ -1010,24 +1010,27 @@ model LearningRecommendation {
 // bir nechta yozuv bo'lishi mumkin (tarix, davriy qayta tayinlash) —
 // lekin bir vaqtda faqat bittasi ACTIVE.
 model LearningAssignment {
-  id                String                   @id @default(cuid())
-  organizationId    String
-  employeeId        String
-  materialId        String
-  assignedByUserId  String?
-  dueDate           DateTime?
-  note              String?
-  reason            LearningAssignmentReason @default(DEVELOPMENT)
-  reasonText        String?
-  source            LearningAssignmentSource @default(MANUAL)
-  status            LearningAssignmentStatus @default(ACTIVE)
-  cancelledAt       DateTime?
-  cancelledByUserId String?
-  reminderSentAt    DateTime?
-  ruleId            String? // source = RULE bo'lsa — qaysi qoida bergan
-  batchId           String? // qaysi tayinlov (partiya) tarkibida
-  createdAt         DateTime                 @default(now())
-  updatedAt         DateTime                 @default(now()) @updatedAt
+  id                  String                   @id @default(cuid())
+  organizationId      String
+  employeeId          String
+  materialId          String
+  assignedByUserId    String?
+  dueDate             DateTime?
+  note                String?
+  reason              LearningAssignmentReason @default(DEVELOPMENT)
+  reasonText          String?
+  source              LearningAssignmentSource @default(MANUAL)
+  status              LearningAssignmentStatus @default(ACTIVE)
+  cancelledAt         DateTime?
+  cancelledByUserId   String?
+  reminderSentAt      DateTime?
+  remindBeforeDays    Int?                     @default(3) // muddatdan N kun oldin (null — yo'q)
+  remindAfterDays     Int? // muddatdan N kun keyin (null — yo'q)
+  reminderAfterSentAt DateTime?
+  ruleId              String? // source = RULE bo'lsa — qaysi qoida bergan
+  batchId             String? // qaysi tayinlov (partiya) tarkibida
+  createdAt           DateTime                 @default(now())
+  updatedAt           DateTime                 @default(now()) @updatedAt
 
   organization Organization             @relation(fields: [organizationId], references: [id], onDelete: Cascade)
   material     LearningMaterial         @relation(fields: [materialId], references: [id], onDelete: Cascade)
@@ -1111,6 +1114,13 @@ model LearningAssignmentRule {
   positionIds               String[]                 @default([])
   branchIds                 String[]                 @default([])
   hiredWithinDays           Int? // faqat ishga kirganiga N kundan oshmaganlar
+  employeeCodes             String[]                 @default([]) // tabel raqamlari ro'yxati
+  hiredFrom                 DateTime? // ishga kirgan sana oralig'i (dan)
+  hiredTo                   DateTime? // (gacha)
+  notifyOnAssign            Boolean                  @default(true)
+  remindBeforeDays          Int?                     @default(3) // muddatdan N kun oldin eslatma (null — yo'q)
+  remindAfterDays           Int? // muddatdan N kun keyin eslatma (null — yo'q)
+  resetProgress             Boolean                  @default(false) // boshlaganlarning progressi ham noldan
   reason                    LearningAssignmentReason @default(DEVELOPMENT)
   reasonText                String?
   note                      String?

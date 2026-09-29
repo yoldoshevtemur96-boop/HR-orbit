@@ -33,6 +33,24 @@ export interface RuleFormValues {
   branchIds: string[];
   onlyNewHires: boolean;
   hiredWithinDays: number;
+  employeeCodesText: string; // tabel raqamlari — vergul, bo'sh joy yoki yangi qator bilan
+  hiredFrom: string; // yyyy-mm-dd
+  hiredTo: string;
+  notifyOnAssign: boolean;
+  remindBefore: boolean;
+  remindBeforeDays: number;
+  remindAfter: boolean;
+  remindAfterDays: number;
+  resetProgress: boolean;
+}
+
+function parseCodes(text: string) {
+  return [...new Set(text.split(/[\s,;]+/).map((c) => c.trim()).filter(Boolean))];
+}
+
+function isoToDateInput(iso: string | null | undefined) {
+  if (!iso) return '';
+  return new Date(new Date(iso).getTime() + 5 * 3600 * 1000).toISOString().slice(0, 10);
 }
 
 export const EMPTY_RULE: RuleFormValues = {
@@ -56,6 +74,15 @@ export const EMPTY_RULE: RuleFormValues = {
   branchIds: [],
   onlyNewHires: false,
   hiredWithinDays: 30,
+  employeeCodesText: '',
+  hiredFrom: '',
+  hiredTo: '',
+  notifyOnAssign: true,
+  remindBefore: true,
+  remindBeforeDays: 3,
+  remindAfter: false,
+  remindAfterDays: 3,
+  resetProgress: false,
 };
 
 // Backend'dagi qoida -> forma qiymatlari (tahrirlash uchun)
@@ -82,6 +109,15 @@ export function ruleToFormValues(rule: Record<string, any>): RuleFormValues {
     branchIds: rule.branchIds ?? [],
     onlyNewHires: Boolean(rule.hiredWithinDays),
     hiredWithinDays: rule.hiredWithinDays ?? 30,
+    employeeCodesText: (rule.employeeCodes ?? []).join(', '),
+    hiredFrom: isoToDateInput(rule.hiredFrom),
+    hiredTo: isoToDateInput(rule.hiredTo),
+    notifyOnAssign: rule.notifyOnAssign ?? true,
+    remindBefore: rule.remindBeforeDays != null,
+    remindBeforeDays: rule.remindBeforeDays ?? 3,
+    remindAfter: rule.remindAfterDays != null,
+    remindAfterDays: rule.remindAfterDays ?? 3,
+    resetProgress: Boolean(rule.resetProgress),
   };
 }
 
@@ -104,6 +140,13 @@ export function ruleToPayload(v: RuleFormValues) {
     dueDate: v.dueMode === 'date' && v.dueDate ? v.dueDate : null,
     skipIfCompletedWithinDays: v.checkHistory ? v.historyDays : null,
     cancelOutOfScope: v.cancelOutOfScope,
+    employeeCodes: parseCodes(v.employeeCodesText),
+    hiredFrom: v.hiredFrom || null,
+    hiredTo: v.hiredTo || null,
+    notifyOnAssign: v.notifyOnAssign,
+    remindBeforeDays: v.remindBefore ? v.remindBeforeDays : null,
+    remindAfterDays: v.remindAfter ? v.remindAfterDays : null,
+    resetProgress: v.resetProgress,
   };
 }
 
@@ -159,7 +202,8 @@ export function RuleForm({
     if (v.type === 'PERMANENT' && v.dueMode === 'date') set('dueMode', 'days');
   }, [v.type, v.dueMode]);
 
-  const hasAudience = v.allOrganization || v.departmentIds.length + v.positionIds.length + v.branchIds.length > 0;
+  const hasAudience =
+    v.allOrganization || v.departmentIds.length + v.positionIds.length + v.branchIds.length > 0 || parseCodes(v.employeeCodesText).length > 0;
   const payload = useMemo(() => ({ ...ruleToPayload(v), name: v.name.trim() || 'Qoida' }), [v]);
 
   useEffect(() => {
@@ -309,10 +353,48 @@ export function RuleForm({
           </label>
 
           <p className="text-xs font-semibold uppercase tracking-wide text-stone-400">Qo&apos;shimcha</p>
-          <p className="text-sm text-stone-600">
-            ✓ Faol tayinlovi bor xodimlarga qayta tayinlanmaydi (doim tekshiriladi). ✓ Xodimga bildirishnoma va muddatdan 3 kun oldin eslatma
-            yuboriladi.
-          </p>
+          <p className="text-sm text-stone-600">✓ Faol tayinlovi bor xodimlarga qayta tayinlanmaydi (doim tekshiriladi).</p>
+          <label className="flex items-center gap-2 text-sm text-stone-700">
+            <input type="checkbox" checked={v.notifyOnAssign} onChange={(e) => set('notifyOnAssign', e.target.checked)} />
+            Tayinlanganda xodimga bildirishnoma yuborish
+          </label>
+          <label className="flex flex-wrap items-center gap-2 text-sm text-stone-700">
+            <input type="checkbox" checked={v.remindBefore} onChange={(e) => set('remindBefore', e.target.checked)} />
+            Muddatdan
+            <input
+              type="number"
+              min={1}
+              max={365}
+              value={v.remindBeforeDays}
+              disabled={!v.remindBefore}
+              onChange={(e) => set('remindBeforeDays', Math.max(1, Number(e.target.value) || 1))}
+              className="w-16 rounded-lg border border-stone-200 px-2 py-1 text-sm disabled:opacity-50"
+            />
+            kun oldin eslatish
+          </label>
+          <label className="flex flex-wrap items-center gap-2 text-sm text-stone-700">
+            <input type="checkbox" checked={v.remindAfter} onChange={(e) => set('remindAfter', e.target.checked)} />
+            Muddat o&apos;tgach
+            <input
+              type="number"
+              min={1}
+              max={365}
+              value={v.remindAfterDays}
+              disabled={!v.remindAfter}
+              onChange={(e) => set('remindAfterDays', Math.max(1, Number(e.target.value) || 1))}
+              className="w-16 rounded-lg border border-stone-200 px-2 py-1 text-sm disabled:opacity-50"
+            />
+            kundan keyin eslatish (tugatmagan bo&apos;lsa)
+          </label>
+          <label className="flex items-start gap-2 text-sm text-stone-700">
+            <input type="checkbox" className="mt-0.5" checked={v.resetProgress} onChange={(e) => set('resetProgress', e.target.checked)} />
+            <span>
+              Progressni nollash
+              <span className="block text-xs text-stone-400">
+                Kursni boshlab qo&apos;yganlar ham noldan boshlaydi (tugatganlar har doim noldan boshlaydi).
+              </span>
+            </span>
+          </label>
           {v.type === 'PERMANENT' && (
             <label className="flex items-start gap-2 text-sm text-stone-700">
               <input type="checkbox" className="mt-0.5" checked={v.cancelOutOfScope} onChange={(e) => set('cancelOutOfScope', e.target.checked)} />
@@ -355,7 +437,33 @@ export function RuleForm({
                 />
                 kundan oshmagan xodimlar
               </label>
-              <p className="text-xs text-stone-400">Bir nechta bo&apos;lim/lavozim/filial tanlansa — ularning birortasiga mos xodimlar olinadi.</p>
+              <div>
+                <label className="mb-1 block text-xs font-medium text-stone-500">Tabel raqamlari (ixtiyoriy)</label>
+                <textarea
+                  value={v.employeeCodesText}
+                  onChange={(e) => set('employeeCodesText', e.target.value)}
+                  rows={2}
+                  placeholder="EMP-00005, EMP-00012 — vergul, bo'sh joy yoki yangi qator bilan (Excel'dan nusxalash mumkin)"
+                  className={FIELD_CLASS}
+                />
+                {parseCodes(v.employeeCodesText).length > 0 && (
+                  <p className="mt-1 text-xs text-stone-400">{parseCodes(v.employeeCodesText).length} ta tabel raqami</p>
+                )}
+              </div>
+              <div className="grid gap-3 md:grid-cols-2">
+                <div>
+                  <label className="mb-1 block text-xs font-medium text-stone-500">Ishga kirgan sana — dan (ixtiyoriy)</label>
+                  <input type="date" value={v.hiredFrom} onChange={(e) => set('hiredFrom', e.target.value)} className={FIELD_CLASS} />
+                </div>
+                <div>
+                  <label className="mb-1 block text-xs font-medium text-stone-500">gacha (ixtiyoriy)</label>
+                  <input type="date" value={v.hiredTo} onChange={(e) => set('hiredTo', e.target.value)} className={FIELD_CLASS} />
+                </div>
+              </div>
+              <p className="text-xs text-stone-400">
+                Bo&apos;lim / lavozim / filial / tabel raqamlaridan birortasiga mos xodimlar olinadi; ishga kirgan sana va &quot;yangi
+                xodimlar&quot; sharti ularni qo&apos;shimcha cheklaydi.
+              </p>
             </>
           )}
         </Section>
@@ -370,6 +478,12 @@ export function RuleForm({
           emptyHint="Maqsadli guruhni tanlang."
           countLabel={localMaterial ? 'xodimga tayinlanadi' : 'xodim mos keladi'}
         />
+        {preview?.unmatchedCodes && preview.unmatchedCodes.length > 0 && (
+          <p className="rounded-md bg-amber-50 px-3 py-2 text-xs text-amber-800">
+            Topilmagan tabel raqamlari: {preview.unmatchedCodes.slice(0, 20).join(', ')}
+            {preview.unmatchedCodes.length > 20 && ` va yana ${preview.unmatchedCodes.length - 20} ta`}
+          </p>
+        )}
         {!localMaterial && (
           <p className="text-xs text-stone-400">
             Material tanlanmaydi — qoidani kurs sahifasidagi &quot;Tayinlovlar&quot; tabida istalgan kursga biriktirasiz.

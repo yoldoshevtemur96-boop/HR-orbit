@@ -80,6 +80,7 @@ export interface AssignmentPreview {
   toAssign: PreviewEmployee[];
   skippedActive: PreviewEmployee[];
   skippedCompleted: PreviewEmployee[];
+  unmatchedCodes?: string[]; // qoida preview'i: tashkilotda topilmagan tabel raqamlari
 }
 
 export interface AssignmentRow {
@@ -159,6 +160,13 @@ export interface AssignmentRuleRow {
   dueDate: string | null;
   skipIfCompletedWithinDays: number | null;
   cancelOutOfScope: boolean;
+  employeeCodes: string[];
+  hiredFrom: string | null;
+  hiredTo: string | null;
+  notifyOnAssign: boolean;
+  remindBeforeDays: number | null;
+  remindAfterDays: number | null;
+  resetProgress: boolean;
   lastRunAt: string | null;
   createdAt: string;
   activeAssignments: number;
