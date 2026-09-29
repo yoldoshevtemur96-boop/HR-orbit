@@ -50,6 +50,7 @@ model Organization {
   learningAssignmentRules    LearningAssignmentRule[]
   storedFiles                StoredFile[]
   learningAssignmentBatches  LearningAssignmentBatch[]
+  learningRuleMaterials      LearningRuleMaterial[]
   learningAssignments        LearningAssignment[]
   learningEvents             LearningEvent[]
   learningEventRegistrations LearningEventRegistration[]
@@ -915,6 +916,7 @@ model LearningMaterial {
   recommendations   LearningRecommendation[]
   assignmentRules   LearningAssignmentRule[]
   assignmentBatches LearningAssignmentBatch[]
+  ruleAttachments   LearningRuleMaterial[]
   assignments       LearningAssignment[]
   requests          LearningRequest[]
   goalMaterials     DevelopmentGoalMaterial[]
@@ -1049,7 +1051,7 @@ model LearningAssignmentBatch {
   name            String
   materialId      String
   source          LearningAssignmentSource @default(MANUAL)
-  ruleId          String?                  @unique
+  ruleId          String?
   reason          LearningAssignmentReason @default(DEVELOPMENT)
   reasonText      String?
   note            String?
@@ -1065,6 +1067,7 @@ model LearningAssignmentBatch {
   rule         LearningAssignmentRule? @relation(fields: [ruleId], references: [id], onDelete: SetNull)
   assignments  LearningAssignment[]
 
+  @@unique([ruleId, materialId])
   @@index([organizationId, createdAt])
   @@map("learning_assignment_batches")
 }
@@ -1077,6 +1080,13 @@ enum LearningRuleStatus {
   STOPPED
   COMPLETED
   ARCHIVED
+}
+
+// GLOBAL — materialsiz qoida: istalgan kursga biriktiriladi.
+// LOCAL — kurs ichida yaratilgan, faqat o'sha kursga ta'sir qiladi.
+enum LearningRuleScope {
+  GLOBAL
+  LOCAL
 }
 
 enum LearningRuleType {
@@ -1093,7 +1103,8 @@ model LearningAssignmentRule {
   name                      String
   description               String?
   tag                       String? // guruhlash va filtrlash uchun
-  materialId                String
+  scope                     LearningRuleScope        @default(GLOBAL)
+  materialId                String? // faqat LOCAL qoida uchun
   type                      LearningRuleType
   allOrganization           Boolean                  @default(false)
   departmentIds             String[]                 @default([])
@@ -1113,13 +1124,31 @@ model LearningAssignmentRule {
   createdAt                 DateTime                 @default(now())
   updatedAt                 DateTime                 @updatedAt
 
-  organization Organization             @relation(fields: [organizationId], references: [id], onDelete: Cascade)
-  material     LearningMaterial         @relation(fields: [materialId], references: [id], onDelete: Cascade)
+  organization Organization              @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+  material     LearningMaterial?         @relation(fields: [materialId], references: [id], onDelete: Cascade)
+  materials    LearningRuleMaterial[] // GLOBAL qoidaga biriktirilgan kurslar
   assignments  LearningAssignment[]
-  batch        LearningAssignmentBatch?
+  batches      LearningAssignmentBatch[]
 
   @@index([organizationId, status, type])
   @@map("learning_assignment_rules")
+}
+
+// Global qoida <-> kurs (material) biriktirmasi
+model LearningRuleMaterial {
+  ruleId           String
+  materialId       String
+  organizationId   String
+  attachedByUserId String?
+  createdAt        DateTime @default(now())
+
+  rule         LearningAssignmentRule @relation(fields: [ruleId], references: [id], onDelete: Cascade)
+  material     LearningMaterial       @relation(fields: [materialId], references: [id], onDelete: Cascade)
+  organization Organization           @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+
+  @@id([ruleId, materialId])
+  @@index([materialId])
+  @@map("learning_rule_materials")
 }
 
 enum LearningEventFormat {

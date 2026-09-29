@@ -12,7 +12,7 @@ import type {
 import { prisma } from '@/config/prisma';
 import { AppError } from '@/common/errors/AppError';
 import { createAssignments, isLearningAdmin } from './assignment.service';
-import { createRule } from './rule.service';
+import { createRule, runRulesForMaterial } from './rule.service';
 import { assertFileInOrganization, signedFilePath } from '@/modules/files/file.service';
 
 interface AuthContext {
@@ -56,6 +56,8 @@ export interface MaterialInput {
   assignment?: MaterialAssignmentSettings | null;
   // Arxivlashda: faol tayinlovlarni bekor qilish va qoidalarni to'xtatish
   cancelActiveAssignments?: boolean;
+  // Kursga biriktirilgan global qoidalar (to'liq ro'yxat)
+  attachedRuleIds?: string[];
 }
 
 export interface MaterialAssignmentSettings {
@@ -70,6 +72,28 @@ export interface MaterialAssignmentSettings {
   dueInDays?: number | null;
   dueDate?: string | null; // yyyy-mm-dd, faqat ONE_TIME
   skipIfCompletedWithinDays?: number | null;
+}
+
+// Kursga biriktirilgan global qoidalarni berilgan ro'yxatga moslaydi.
+// Ajratilgan qoidaning tayinlovlari qoladi (bekor qilish — kurs sahifasidagi
+// "Ajratish" orqali). Qaytaradi — yangi biriktirilganlar.
+async function syncAttachedRules(auth: AuthContext, materialId: string, ruleIds: string[]) {
+  const valid = await prisma.learningAssignmentRule.findMany({
+    where: { id: { in: ruleIds }, organizationId: auth.organizationId, scope: 'GLOBAL', status: { not: 'ARCHIVED' } },
+    select: { id: true },
+  });
+  const wanted = new Set(valid.map((r) => r.id));
+  const current = await prisma.learningRuleMaterial.findMany({ where: { materialId }, select: { ruleId: true } });
+  const currentIds = new Set(current.map((c) => c.ruleId));
+  const toAdd = [...wanted].filter((id) => !currentIds.has(id));
+  const toRemove = [...currentIds].filter((id) => !wanted.has(id));
+  await prisma.$transaction([
+    prisma.learningRuleMaterial.deleteMany({ where: { materialId, ruleId: { in: toRemove } } }),
+    prisma.learningRuleMaterial.createMany({
+      data: toAdd.map((ruleId) => ({ ruleId, materialId, organizationId: auth.organizationId, attachedByUserId: auth.userId })),
+    }),
+  ]);
+  return toAdd;
 }
 
 // Formadan kelgan tayinlash sozlamasini bajaradi: bir martalik — qo'lda
@@ -292,13 +316,21 @@ export async function getCatalogMaterial(auth: AuthContext, materialId: string) 
     : null;
   const [activeAssignments, activeRules] = await Promise.all([
     prisma.learningAssignment.count({ where: { organizationId: auth.organizationId, materialId, status: 'ACTIVE' } }),
-    prisma.learningAssignmentRule.count({ where: { organizationId: auth.organizationId, materialId, status: 'ACTIVE' } }),
+    prisma.learningAssignmentRule.count({
+      where: {
+        organizationId: auth.organizationId,
+        status: 'ACTIVE',
+        OR: [{ scope: 'LOCAL', materialId }, { scope: 'GLOBAL', materials: { some: { materialId } } }],
+      },
+    }),
   ]);
+  const attached = await prisma.learningRuleMaterial.findMany({ where: { materialId }, select: { ruleId: true } });
   return {
     ...material,
     contentFile: contentFile ? { ...contentFile, url: signedFilePath(contentFile.id) } : null,
     activeAssignments,
     activeRules,
+    attachedRuleIds: attached.map((a) => a.ruleId),
   };
 }
 
@@ -337,9 +369,12 @@ export async function createMaterial(auth: AuthContext, input: MaterialInput) {
       pendingAssignment: status === 'DRAFT' && input.assignment ? (input.assignment as unknown as Prisma.InputJsonValue) : undefined,
     },
   });
+  if (input.attachedRuleIds?.length) await syncAttachedRules(auth, created.id, input.attachedRuleIds);
   const assignmentResult =
     status === 'PUBLISHED' && input.assignment ? await runMaterialAssignment(auth, created, input.assignment) : null;
-  return { ...created, assignmentResult };
+  // Nashr qilingan bo'lsa — biriktirilgan global qoidalar darhol ishlaydi
+  const rulesResult = status === 'PUBLISHED' ? await runRulesForMaterial(auth.organizationId, created.id) : null;
+  return { ...created, assignmentResult, rulesAssigned: rulesResult?.assigned ?? 0 };
 }
 
 export async function updateMaterial(auth: AuthContext, materialId: string, input: Partial<MaterialInput>) {
@@ -400,13 +435,21 @@ export async function updateMaterial(auth: AuthContext, materialId: string, inpu
         data: { status: 'CANCELLED', cancelledAt: new Date(), cancelledByUserId: auth.userId },
       }),
       prisma.learningAssignmentRule.updateMany({
-        where: { organizationId: auth.organizationId, materialId, status: 'ACTIVE' },
+        where: { organizationId: auth.organizationId, materialId, scope: 'LOCAL', status: 'ACTIVE' },
         data: { status: 'STOPPED' },
       }),
+      prisma.learningRuleMaterial.deleteMany({ where: { materialId } }),
     ]);
     cancelledAssignments = cancelled.count;
   }
 
+  const newlyAttached = input.attachedRuleIds ? await syncAttachedRules(auth, materialId, input.attachedRuleIds) : [];
   const assignmentResult = runNow && settings ? await runMaterialAssignment(auth, updated, settings) : null;
-  return { ...updated, assignmentResult, cancelledAssignments };
+  // Birinchi nashrda — barcha biriktirilgan qoidalar; nashr qilinganda
+  // yangi biriktirilganlar — shu kurs bo'yicha ishlaydi
+  let rulesAssigned = 0;
+  if (nextStatus === 'PUBLISHED' && (existing.status !== 'PUBLISHED' || newlyAttached.length > 0)) {
+    rulesAssigned = (await runRulesForMaterial(auth.organizationId, materialId)).assigned;
+  }
+  return { ...updated, assignmentResult, cancelledAssignments, rulesAssigned };
 }

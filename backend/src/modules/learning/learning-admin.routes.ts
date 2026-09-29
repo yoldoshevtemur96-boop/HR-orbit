@@ -130,7 +130,7 @@ const ruleSchema = z
     name: z.string().trim().min(1, 'Qoida nomini kiriting').max(200),
     description: z.string().trim().max(2000).nullable().optional(),
     tag: z.string().trim().max(60).nullable().optional(),
-    materialId: z.string().min(1),
+    materialId: z.string().min(1).nullable().optional(), // berilsa — lokal (faqat shu kurs uchun) qoida
     type: z.enum(['ONE_TIME', 'PERMANENT']),
     allOrganization: z.boolean().optional(),
     departmentIds: idList,
@@ -148,7 +148,8 @@ const ruleSchema = z
   .refine((v) => !(v.dueDate && v.dueInDays), { message: 'Muddatni bitta usulda kiriting' });
 
 learningAdminRouter.get('/rules', async (req, res) => {
-  res.json(await ruleService.listRules(req.auth!));
+  const { scope } = z.object({ scope: z.enum(['GLOBAL', 'LOCAL', 'ALL']).optional() }).parse(req.query);
+  res.json(await ruleService.listRules(req.auth!, { scope }));
 });
 
 learningAdminRouter.post('/rules/preview', async (req, res) => {
@@ -263,6 +264,8 @@ const materialSchema = z.object({
     .nullable()
     .optional(),
   cancelActiveAssignments: z.boolean().optional(),
+  // Kursga biriktiriladigan global qoidalar (to'liq ro'yxat — qolganlari ajratiladi)
+  attachedRuleIds: z.array(z.string().min(1)).max(100).optional(),
   contentUrl: optionalUrl,
   durationMinutes: z.coerce.number().int().min(0).max(100000).optional(),
   author: z.string().trim().max(200).nullable().optional(),
@@ -294,4 +297,21 @@ learningAdminRouter.post('/catalog', async (req, res) => {
 learningAdminRouter.patch('/catalog/:id', async (req, res) => {
   const input = materialSchema.partial().parse(req.body);
   res.json(await catalogService.updateMaterial(req.auth!, req.params.id, input));
+});
+
+// ---------------------------------------------------------------------------
+// Kurs ichida: global qoidalarni biriktirish / ajratish, lokal qoidalar
+// ---------------------------------------------------------------------------
+
+learningAdminRouter.get('/catalog/:id/rules', async (req, res) => {
+  res.json(await ruleService.listRulesForMaterial(req.auth!, req.params.id));
+});
+
+learningAdminRouter.post('/catalog/:id/rules/:ruleId', async (req, res) => {
+  res.json(await ruleService.attachRule(req.auth!, req.params.id, req.params.ruleId));
+});
+
+learningAdminRouter.delete('/catalog/:id/rules/:ruleId', async (req, res) => {
+  const { cancelAssignments } = z.object({ cancelAssignments: z.enum(['0', '1']).default('0') }).parse(req.query);
+  res.json(await ruleService.detachRule(req.auth!, req.params.id, req.params.ruleId, cancelAssignments === '1'));
 });

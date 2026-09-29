@@ -12,6 +12,7 @@ import {
   RULE_STATUS_STYLE,
   RULE_TYPE_LABEL,
   type AssignmentRuleRow,
+  type RuleScope,
   type RuleStatus,
 } from '@/types/learningAdmin';
 
@@ -47,6 +48,7 @@ function Rules() {
   const searchParams = useSearchParams();
   const [rules, setRules] = useState<AssignmentRuleRow[] | null>(null);
   const [status, setStatus] = useState<'' | RuleStatus>('');
+  const [scope, setScope] = useState<RuleScope>('GLOBAL');
   const [tag, setTag] = useState('');
   const [error, setError] = useState<string | null>(null);
   const [message, setMessage] = useState<string | null>(searchParams.get('msg'));
@@ -55,10 +57,10 @@ function Rules() {
 
   const load = useCallback(() => {
     api
-      .get<AssignmentRuleRow[]>('/learning-admin/rules')
+      .get<AssignmentRuleRow[]>('/learning-admin/rules', { params: { scope } })
       .then((res) => setRules(res.data))
       .catch((err) => setError(err?.response?.data?.error?.message ?? 'Yuklashda xatolik yuz berdi'));
-  }, []);
+  }, [scope]);
 
   useEffect(() => {
     load();
@@ -118,14 +120,33 @@ function Rules() {
         <div className="max-w-2xl">
           <h1 className="font-display text-2xl font-semibold text-stone-900">Qoidalar</h1>
           <p className="mt-1 text-sm text-stone-500">
-            Qoida shartga mos xodimlarga materialni avtomatik tayinlaydi. <b>Doimiy</b> qoida yangi kelgan yoki boshqa bo&apos;limga
-            o&apos;tgan xodimlarga ham tayinlaydi, shartdan chiqqanlarning tugallanmagan tayinlovini bekor qiladi.
+            Qoida — &quot;kimga va qanday tayinlash&quot;. Global qoida kursga bog&apos;lanmagan: uni kurs sahifasidagi
+            &quot;Tayinlash&quot; bo&apos;limida istalgan kursga biriktirasiz. <b>Doimiy</b> qoida yangi kelgan yoki boshqa bo&apos;limga
+            o&apos;tgan xodimlarga ham tayinlaydi.
           </p>
         </div>
         <Link href="/learning-admin/rules/new" className="rounded-lg bg-accent px-4 py-2.5 text-sm font-semibold text-white transition hover:opacity-90">
           + Yangi qoida
         </Link>
       </div>
+
+      <div className="flex gap-2">
+        {(['GLOBAL', 'LOCAL'] as RuleScope[]).map((sc) => (
+          <button
+            key={sc}
+            type="button"
+            onClick={() => setScope(sc)}
+            className={`rounded-full border px-3.5 py-1.5 text-sm transition ${
+              scope === sc ? 'border-accent bg-accent text-white' : 'border-stone-200 bg-white text-stone-600 hover:border-stone-300'
+            }`}
+          >
+            {sc === 'GLOBAL' ? 'Global qoidalar' : 'Kurslar ichidagi (lokal)'}
+          </button>
+        ))}
+      </div>
+      {scope === 'LOCAL' && (
+        <p className="-mt-2 text-xs text-stone-400">Lokal qoidalar kurs sahifasining &quot;Tayinlovlar&quot; tabida yaratiladi va faqat o&apos;sha kursga ta&apos;sir qiladi.</p>
+      )}
 
       <div className="flex flex-wrap items-end justify-between gap-3 border-b border-stone-200">
         <nav className="flex gap-1 overflow-x-auto">
@@ -185,9 +206,23 @@ function Rules() {
                     </div>
                     {rule.description && <p className="text-sm text-stone-500">{rule.description}</p>}
                     <p className="text-sm text-stone-700">
-                      <Link href={`/learning-admin/catalog/${rule.material.id}`} className="font-medium hover:text-accent">
-                        {rule.material.title}
-                      </Link>
+                      {rule.materials.length === 0 ? (
+                        <span className="text-stone-400">
+                          {rule.scope === 'GLOBAL' ? 'Hali hech qaysi kursga biriktirilmagan' : 'Kurs topilmadi'}
+                        </span>
+                      ) : (
+                        <>
+                          <span className="text-xs text-stone-400">{rule.scope === 'GLOBAL' ? 'Kurslar: ' : 'Kurs: '}</span>
+                          {rule.materials.map((m, i) => (
+                            <span key={m.id}>
+                              {i > 0 && ', '}
+                              <Link href={`/learning-admin/catalog/${m.id}`} className="font-medium hover:text-accent">
+                                {m.title}
+                              </Link>
+                            </span>
+                          ))}
+                        </>
+                      )}
                     </p>
                     <p className="text-xs text-stone-500">Kimga: {audienceText(rule)}</p>
                     <p className="text-xs text-stone-400">
@@ -241,7 +276,7 @@ function Rules() {
                     </span>
                     <ProgressBar value={rule.completionPercent} className="w-40" />
                     <span>{rule.completionPercent}%</span>
-                    <Link href={`/learning-admin/assignments?materialId=${rule.material.id}`} className="hover:text-accent">
+                    <Link href="/learning-admin/assignments?source=RULE" className="hover:text-accent">
                       {rule.completedAssignments} tugatgan · {rule.activeAssignments} jarayonda
                     </Link>
                     {rule.cancelledAssignments > 0 && <span>· {rule.cancelledAssignments} bekor qilingan</span>}

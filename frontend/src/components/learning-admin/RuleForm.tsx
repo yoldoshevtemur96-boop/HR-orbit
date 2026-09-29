@@ -2,11 +2,10 @@
 
 import { useEffect, useMemo, useState } from 'react';
 import { api } from '@/lib/api';
-import { FIELD_CLASS, MaterialPicker, OptionList, PreviewSummary, Section } from '@/components/learning-admin/formParts';
+import { FIELD_CLASS, OptionList, PreviewSummary, Section } from '@/components/learning-admin/formParts';
 import {
   ASSIGNMENT_REASON_LABEL,
   RULE_TYPE_LABEL,
-  type AssignableMaterial,
   type AssignmentPreview,
   type AssignmentReason,
   type AudienceOptions,
@@ -67,7 +66,7 @@ export function ruleToFormValues(rule: Record<string, any>): RuleFormValues {
     description: rule.description ?? '',
     tag: rule.tag ?? '',
     type: rule.type,
-    materialId: rule.materialId,
+    materialId: rule.materialId ?? '',
     checkHistory: Boolean(rule.skipIfCompletedWithinDays),
     historyDays: rule.skipIfCompletedWithinDays ?? 365,
     reason: rule.reason,
@@ -91,7 +90,7 @@ export function ruleToPayload(v: RuleFormValues) {
     name: v.name.trim(),
     description: v.description.trim() || null,
     tag: v.tag.trim() || null,
-    materialId: v.materialId,
+    materialId: v.materialId || null, // bo'sh — global qoida
     type: v.type,
     allOrganization: v.allOrganization,
     departmentIds: v.departmentIds,
@@ -118,27 +117,31 @@ const RULE_TYPE_HINT: Record<RuleType, string> = {
 
 // Qoida formasi — Pulsdagi kabi 4 bo'lim: Ma'lumotlar, Materiallar,
 // Parametrlar, Maqsadli guruh. O'ngda "hozir ishga tushsa" natijasi.
+// Global qoida — materialsiz (kurslar unga kurs ichida biriktiriladi).
+// Lokal qoida — localMaterial berilganda: faqat shu kurs uchun.
 export function RuleForm({
   initial,
   mode,
   isSaving,
   error,
   onSubmit,
+  localMaterial = null,
+  attachedMaterials = [],
 }: {
   initial: RuleFormValues;
   mode: 'create' | 'edit';
   isSaving: boolean;
   error: string | null;
   onSubmit: (values: RuleFormValues, activate: boolean) => void;
+  localMaterial?: { id: string; title: string } | null;
+  attachedMaterials?: { id: string; title: string }[];
 }) {
-  const [v, setV] = useState<RuleFormValues>(initial);
-  const [materials, setMaterials] = useState<AssignableMaterial[] | null>(null);
+  const [v, setV] = useState<RuleFormValues>({ ...initial, materialId: localMaterial?.id ?? '' });
   const [options, setOptions] = useState<AudienceOptions | null>(null);
   const [preview, setPreview] = useState<AssignmentPreview | null>(null);
   const [isPreviewing, setIsPreviewing] = useState(false);
 
   useEffect(() => {
-    api.get<AssignableMaterial[]>('/learning-admin/materials').then((res) => setMaterials(res.data));
     api.get<AudienceOptions>('/learning-admin/audience-options').then((res) => setOptions(res.data));
   }, []);
 
@@ -159,7 +162,7 @@ export function RuleForm({
   const payload = useMemo(() => ({ ...ruleToPayload(v), name: v.name.trim() || 'Qoida' }), [v]);
 
   useEffect(() => {
-    if (!v.materialId || !hasAudience || (v.reason === 'OTHER' && !v.reasonText.trim())) {
+    if (!hasAudience || (v.reason === 'OTHER' && !v.reasonText.trim())) {
       setPreview(null);
       return;
     }
@@ -172,11 +175,10 @@ export function RuleForm({
         .finally(() => setIsPreviewing(false));
     }, 350);
     return () => clearTimeout(timer);
-  }, [payload, v.materialId, hasAudience, v.reason, v.reasonText]);
+  }, [payload, hasAudience, v.reason, v.reasonText]);
 
   const canSave =
     v.name.trim().length > 0 &&
-    Boolean(v.materialId) &&
     hasAudience &&
     (v.reason !== 'OTHER' || v.reasonText.trim().length > 0) &&
     (v.dueMode !== 'date' || Boolean(v.dueDate));
@@ -211,23 +213,32 @@ export function RuleForm({
           </div>
         </Section>
 
-        {/* 2. Materiallar */}
-        <Section step={2} title="Materiallar">
-          <MaterialPicker materials={materials} value={v.materialId} onChange={(id) => set('materialId', id)} />
-          <label className="flex flex-wrap items-center gap-2 text-sm text-stone-700">
-            <input type="checkbox" checked={v.checkHistory} onChange={(e) => set('checkHistory', e.target.checked)} />
-            O&apos;quv tarixini tekshirish: oxirgi
-            <input
-              type="number"
-              min={1}
-              value={v.historyDays}
-              disabled={!v.checkHistory}
-              onChange={(e) => set('historyDays', Math.max(1, Number(e.target.value) || 1))}
-              className="w-20 rounded-lg border border-stone-200 px-2 py-1 text-sm disabled:opacity-50"
-            />
-            kun ichida o&apos;tganlarga tayinlamaslik
-          </label>
-        </Section>
+        {/* 2. Kurslar */}
+        {localMaterial ? (
+          <Section step={2} title="Kurs (lokal qoida)">
+            <p className="text-sm text-stone-700">
+              <span className="font-semibold">{localMaterial.title}</span>
+            </p>
+            <p className="text-xs text-stone-400">Bu qoida faqat shu kursga ta&apos;sir qiladi.</p>
+          </Section>
+        ) : (
+          <Section step={2} title="Kurslar">
+            <p className="text-sm text-stone-600">
+              Global qoida — kursga bog&apos;lanmagan. Uni kurs sahifasidagi &quot;Tayinlash&quot; bo&apos;limida istalgan kursga biriktirasiz.
+            </p>
+            {attachedMaterials.length > 0 ? (
+              <ul className="flex flex-wrap gap-1.5">
+                {attachedMaterials.map((m) => (
+                  <li key={m.id} className="rounded-full bg-stone-100 px-2.5 py-1 text-xs text-stone-600">
+                    {m.title}
+                  </li>
+                ))}
+              </ul>
+            ) : (
+              mode === 'edit' && <p className="text-xs text-stone-400">Hali hech qaysi kursga biriktirilmagan.</p>
+            )}
+          </Section>
+        )}
 
         {/* 3. Parametrlar */}
         <Section step={3} title="Parametrlar">
@@ -302,6 +313,20 @@ export function RuleForm({
             </div>
           </div>
 
+          <label className="flex flex-wrap items-center gap-2 text-sm text-stone-700">
+            <input type="checkbox" checked={v.checkHistory} onChange={(e) => set('checkHistory', e.target.checked)} />
+            O&apos;quv tarixini tekshirish: oxirgi
+            <input
+              type="number"
+              min={1}
+              value={v.historyDays}
+              disabled={!v.checkHistory}
+              onChange={(e) => set('historyDays', Math.max(1, Number(e.target.value) || 1))}
+              className="w-20 rounded-lg border border-stone-200 px-2 py-1 text-sm disabled:opacity-50"
+            />
+            kun ichida kursni o&apos;tganlarga tayinlamaslik
+          </label>
+
           <p className="text-xs font-semibold uppercase tracking-wide text-stone-400">Qo&apos;shimcha</p>
           <p className="text-sm text-stone-600">
             ✓ Faol tayinlovi bor xodimlarga qayta tayinlanmaydi (doim tekshiriladi). ✓ Xodimga bildirishnoma va muddatdan 3 kun oldin eslatma
@@ -356,13 +381,15 @@ export function RuleForm({
       </div>
 
       <aside className="sticky top-4 flex flex-col gap-3 rounded-xl border border-stone-200 bg-white p-5">
-        <p className="text-sm font-semibold text-stone-900">Hozir ishga tushsa</p>
+        <p className="text-sm font-semibold text-stone-900">{localMaterial ? 'Hozir ishga tushsa' : 'Maqsadli guruh'}</p>
         <PreviewSummary
-          ready={Boolean(v.materialId) && hasAudience}
+          ready={hasAudience}
           preview={preview}
           isLoading={isPreviewing}
-          emptyHint="Material va maqsadli guruhni tanlang."
+          emptyHint="Maqsadli guruhni tanlang."
+          countLabel={localMaterial ? 'xodimga tayinlanadi' : 'xodim mos keladi'}
         />
+        {!localMaterial && <p className="text-xs text-stone-400">Qoida biriktirilgan har bir kurs bo&apos;yicha shu xodimlarga tayinlaydi.</p>}
         {v.type === 'PERMANENT' && <p className="text-xs text-stone-400">Keyin shartga mos kelgan yangi xodimlarga ham avtomatik tayinlanadi.</p>}
         {error && <p className="rounded-md bg-rose-50 px-3 py-2 text-sm text-rose-700">{error}</p>}
         <button

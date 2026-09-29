@@ -55,7 +55,15 @@ export default function EditRulePage() {
         <span className="rounded-full bg-stone-100 px-2.5 py-1 text-xs font-medium text-stone-600">{RULE_STATUS_LABEL[rule.status]}</span>
       </div>
       {editable ? (
-        <RuleForm initial={ruleToFormValues(rule)} mode="edit" isSaving={isSaving} error={error} onSubmit={handleSubmit} />
+        <RuleForm
+          initial={ruleToFormValues(rule)}
+          mode="edit"
+          isSaving={isSaving}
+          error={error}
+          onSubmit={handleSubmit}
+          localMaterial={rule.scope === 'LOCAL' ? rule.materials?.[0] ?? null : null}
+          attachedMaterials={rule.scope === 'GLOBAL' ? rule.materials ?? [] : []}
+        />
       ) : (
         <p className="rounded-md bg-amber-50 px-3 py-2 text-sm text-amber-800">
           {rule.status === 'ACTIVE'

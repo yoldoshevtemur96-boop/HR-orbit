@@ -2,7 +2,7 @@
 
 import { useEffect, useState } from 'react';
 import Link from 'next/link';
-import { useParams, useRouter } from 'next/navigation';
+import { useParams, useRouter, useSearchParams } from 'next/navigation';
 import { api } from '@/lib/api';
 import { Modal } from '@/components/hr/Modal';
 import {
@@ -51,6 +51,7 @@ interface AdminMaterial {
   pendingAssignment: Record<string, unknown> | null;
   activeAssignments: number;
   activeRules: number;
+  attachedRuleIds: string[];
 }
 
 interface SaveResult {
@@ -81,7 +82,8 @@ export default function EditMaterialPage() {
   const params = useParams<{ id: string }>();
   const router = useRouter();
   const [material, setMaterial] = useState<AdminMaterial | null>(null);
-  const [tab, setTab] = useState<'material' | 'assignments'>('material');
+  const searchParams = useSearchParams();
+  const [tab, setTab] = useState<'material' | 'assignments'>(searchParams.get('tab') === 'assignments' ? 'assignments' : 'material');
   const [isSaving, setIsSaving] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [isArchiveOpen, setIsArchiveOpen] = useState(false);
@@ -139,6 +141,7 @@ export default function EditMaterialPage() {
     availableUntil: toDateInput(material.availableUntil),
     // Qoralamada saqlangan tayinlash sozlamasi tiklanadi; nashr qilinganda — bo'sh
     assign: material.status === 'DRAFT' ? assignFromPending(material.pendingAssignment) : EMPTY_ASSIGN,
+    attachedRuleIds: material.attachedRuleIds,
   };
 
   const hasActive = material.activeAssignments > 0 || material.activeRules > 0;
@@ -219,7 +222,8 @@ export default function EditMaterialPage() {
           error={error}
           onSubmit={(values, status) =>
             save(
-              { ...toMaterialPayload(values), status },
+              // Global qoidalar biriktirmasi "Tayinlovlar" tabida boshqariladi — bu yerdan yuborilmaydi
+              { ...toMaterialPayload(values), attachedRuleIds: undefined, status },
               status === 'PUBLISHED' ? (material.status === 'PUBLISHED' ? "O'zgarishlar saqlandi" : 'Material nashr qilindi') : 'Qoralama saqlandi',
             )
           }

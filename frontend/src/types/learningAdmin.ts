@@ -105,6 +105,12 @@ export interface AssignmentList {
 }
 
 export type RuleType = 'ONE_TIME' | 'PERMANENT';
+export type RuleScope = 'GLOBAL' | 'LOCAL';
+
+export const RULE_SCOPE_LABEL: Record<RuleScope, string> = {
+  GLOBAL: 'Global',
+  LOCAL: 'Lokal',
+};
 
 export const RULE_TYPE_LABEL: Record<RuleType, string> = {
   ONE_TIME: 'Bir martalik',
@@ -136,7 +142,10 @@ export interface AssignmentRuleRow {
   tag: string | null;
   type: RuleType;
   status: RuleStatus;
-  material: { id: string; title: string; type: LearningMaterialType };
+  scope: RuleScope;
+  materialId: string | null;
+  // GLOBAL — biriktirilgan kurslar, LOCAL — o'z kursi
+  materials: { id: string; title: string; type: LearningMaterialType; status?: string }[];
   audience: {
     allOrganization: boolean;
     departments: string[];

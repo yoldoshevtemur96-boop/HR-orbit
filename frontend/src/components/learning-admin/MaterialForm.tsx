@@ -15,7 +15,14 @@ import {
   type LearningMaterialType,
   type LearningVisibility,
 } from '@/types/learning';
-import { ASSIGNMENT_REASON_LABEL, type AssignmentReason, type AudienceOptions } from '@/types/learningAdmin';
+import {
+  ASSIGNMENT_REASON_LABEL,
+  RULE_STATUS_LABEL,
+  RULE_TYPE_LABEL,
+  type AssignmentReason,
+  type AssignmentRuleRow,
+  type AudienceOptions,
+} from '@/types/learningAdmin';
 
 export type PublishStatus = 'DRAFT' | 'PUBLISHED' | 'ARCHIVED';
 
@@ -43,6 +50,7 @@ export interface MaterialFormValues {
   availableFrom: string; // yyyy-mm-dd
   availableUntil: string;
   assign: AssignSettings;
+  attachedRuleIds: string[]; // biriktiriladigan global qoidalar (faqat yangi materialda)
 }
 
 // "Majburiy qilish" bloki — material saqlanganda tayinlov yoki doimiy qoida yaratiladi
@@ -126,6 +134,7 @@ export const EMPTY_MATERIAL: MaterialFormValues = {
   availableFrom: '',
   availableUntil: '',
   assign: EMPTY_ASSIGN,
+  attachedRuleIds: [],
 };
 
 // Backend'ga yuboriladigan ko'rinish
@@ -236,10 +245,23 @@ export function MaterialForm({
     !initial.coverUrl ? 'auto' : initial.coverUrl.startsWith('/files/') ? 'upload' : 'url',
   );
   const [audience, setAudience] = useState<AudienceOptions | null>(null);
+  const [globalRules, setGlobalRules] = useState<AssignmentRuleRow[] | null>(null);
 
   useEffect(() => {
     api.get<AudienceOptions>('/learning-admin/audience-options').then((res) => setAudience(res.data));
-  }, []);
+    if (currentStatus === null) {
+      api
+        .get<AssignmentRuleRow[]>('/learning-admin/rules', { params: { scope: 'GLOBAL' } })
+        .then((res) => setGlobalRules(res.data.filter((r) => r.status !== 'ARCHIVED')));
+    }
+  }, [currentStatus]);
+
+  function toggleRule(id: string) {
+    setValues((v) => ({
+      ...v,
+      attachedRuleIds: v.attachedRuleIds.includes(id) ? v.attachedRuleIds.filter((x) => x !== id) : [...v.attachedRuleIds, id],
+    }));
+  }
 
   function set<K extends keyof MaterialFormValues>(key: K, value: MaterialFormValues[K]) {
     setValues((v) => ({ ...v, [key]: value }));
@@ -621,19 +643,48 @@ export function MaterialForm({
           </label>
         </Block>
 
-        {/* 7. Majburiy qilish (tayinlash) */}
-        <Block
-          title="Majburiy qilish (tayinlash)"
-          hint={
-            currentStatus === 'PUBLISHED'
-              ? "Belgilansa — saqlashda yangi tayinlov yoki qoida yaratiladi. Mavjud tayinlovlar 'Tayinlovlar' tabida."
-              : 'Qoralamada sozlama saqlanadi va nashr qilinganda bajariladi.'
-          }
-        >
-          <label className="flex items-center gap-2 text-sm font-medium text-stone-800">
-            <input type="checkbox" checked={a.enabled} onChange={(e) => setAssign('enabled', e.target.checked)} />
-            Bu materialni xodimlarga tayinlash
-          </label>
+        {/* 7. Tayinlash: global qoidalar + faqat shu kurs uchun (lokal) */}
+        <Block title="Tayinlash" hint="Global qoida — umumiy, istalgan kursga biriktiriladi. Lokal — faqat shu kurs uchun.">
+          <div className="flex flex-col gap-2">
+            <p className="text-sm font-medium text-stone-800">Global qoidalar</p>
+            {currentStatus !== null ? (
+              <p className="text-sm text-stone-500">Global qoidalarni biriktirish va ajratish — tepadagi &quot;Tayinlovlar&quot; tabida.</p>
+            ) : globalRules === null ? (
+              <p className="text-sm text-stone-400">Yuklanmoqda...</p>
+            ) : globalRules.length === 0 ? (
+              <p className="text-sm text-stone-400">Hali global qoida yo&apos;q — uni &quot;Qoidalar&quot; bo&apos;limida yaratish mumkin.</p>
+            ) : (
+              <div className="max-h-56 overflow-y-auto rounded-lg border border-stone-200">
+                {globalRules.map((r) => (
+                  <label
+                    key={r.id}
+                    className="flex cursor-pointer items-start gap-2 border-b border-stone-100 px-3 py-2 text-sm last:border-0 hover:bg-stone-50"
+                  >
+                    <input type="checkbox" className="mt-0.5" checked={values.attachedRuleIds.includes(r.id)} onChange={() => toggleRule(r.id)} />
+                    <span className="min-w-0">
+                      <span className="block font-medium text-stone-800">{r.name}</span>
+                      <span className="block text-xs text-stone-400">
+                        {RULE_TYPE_LABEL[r.type]} · {RULE_STATUS_LABEL[r.status]}
+                        {r.materials.length > 0 && ` · ${r.materials.length} ta kursda`}
+                      </span>
+                    </span>
+                  </label>
+                ))}
+              </div>
+            )}
+          </div>
+
+          <div className="border-t border-stone-100 pt-4">
+            <label className="flex items-center gap-2 text-sm font-medium text-stone-800">
+              <input type="checkbox" checked={a.enabled} onChange={(e) => setAssign('enabled', e.target.checked)} />
+              Faqat shu kurs uchun tayinlash (lokal)
+            </label>
+            <p className="mt-1 text-xs text-stone-400">
+              {currentStatus === 'PUBLISHED'
+                ? 'Saqlashda bir martalik tayinlov yoki lokal doimiy qoida yaratiladi.'
+                : 'Qoralamada sozlama saqlanadi va nashr qilinganda bajariladi.'}
+            </p>
+          </div>
 
           {a.enabled && (
             <>
@@ -641,7 +692,7 @@ export function MaterialForm({
                 value={a.mode}
                 onChange={(v) => setAssign('mode', v)}
                 options={[
-                  { value: 'PERMANENT', label: 'Doimiy', hint: 'Hozirgilarga va keyin qo‘shiladiganlarga avtomatik (qoida)' },
+                  { value: 'PERMANENT', label: 'Doimiy', hint: 'Hozirgilarga va keyin qo‘shiladiganlarga avtomatik (lokal qoida)' },
                   { value: 'ONE_TIME', label: 'Bir martalik', hint: 'Faqat hozir mos kelganlarga' },
                 ]}
               />

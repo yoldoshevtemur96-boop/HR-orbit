@@ -20,12 +20,17 @@ export default function NewMaterialPage() {
     setIsSaving(true);
     setError(null);
     try {
-      const res = await api.post<{ assignmentResult: { ok: boolean; message: string } | null }>('/learning-admin/catalog', {
-        ...toMaterialPayload(values),
-        status,
-      });
+      const res = await api.post<{ assignmentResult: { ok: boolean; message: string } | null; rulesAssigned: number }>(
+        '/learning-admin/catalog',
+        { ...toMaterialPayload(values), status },
+      );
       const verb = status === 'PUBLISHED' ? 'Material nashr qilindi' : 'Qoralama saqlandi';
-      const msg = res.data.assignmentResult ? `${verb}. ${res.data.assignmentResult.message}` : verb;
+      const parts = [verb];
+      if (res.data.assignmentResult) parts.push(res.data.assignmentResult.message);
+      if (values.attachedRuleIds.length) {
+        parts.push(`${values.attachedRuleIds.length} ta global qoida biriktirildi` + (res.data.rulesAssigned ? `, ${res.data.rulesAssigned} ta xodimga tayinlandi` : ''));
+      }
+      const msg = parts.join('. ');
       router.push(`/learning-admin/catalog?msg=${encodeURIComponent(msg)}${res.data.assignmentResult?.ok === false ? '&warn=1' : ''}`);
     } catch (err: any) {
       setError(err?.response?.data?.error?.message ?? err?.response?.data?.error?.issues?.[0]?.message ?? 'Saqlashda xatolik');
