@@ -2,6 +2,7 @@ import type { LearningMaterialType, Prisma, RoleName } from '@prisma/client';
 import { prisma } from '@/config/prisma';
 import { AppError } from '@/common/errors/AppError';
 import { sendDueReminders } from './assignment.service';
+import { syncRulesForEmployee } from './rule.service';
 
 interface AuthContext {
   userId: string;
@@ -469,6 +470,9 @@ export async function getSummary(auth: AuthContext) {
   const organizationId = auth.organizationId;
   // Muddat eslatmalari shu yerda yuboriladi (cron o'rniga) — xato bo'lsa
   // ham bosh sahifa ochilaverishi kerak.
+  // Doimiy qoidalar ham shu yerda xodimning o'zi uchun tekshiriladi
+  // (masalan, "yangi xodimlar" qoidasi yoki o'tkazib yuborilgan voqea).
+  await syncRulesForEmployee(organizationId, employeeId).catch(() => undefined);
   await sendDueReminders(organizationId, employeeId, auth.userId).catch(() => undefined);
   const [favorites, pendingRequests, activeGoals, upcomingEvents, inProgress, assigned, recommended] = await Promise.all([
     prisma.learningFavorite.count({ where: { organizationId, employeeId, material: { status: 'PUBLISHED' } } }),

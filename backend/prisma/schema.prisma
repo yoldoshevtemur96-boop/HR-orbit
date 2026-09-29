@@ -47,6 +47,7 @@ model Organization {
   learningProgress           LearningProgress[]
   learningFavorites          LearningFavorite[]
   learningRecommendations    LearningRecommendation[]
+  learningAssignmentRules    LearningAssignmentRule[]
   learningAssignments        LearningAssignment[]
   learningEvents             LearningEvent[]
   learningEventRegistrations LearningEventRegistration[]
@@ -836,6 +837,7 @@ model LearningMaterial {
   progress        LearningProgress[]
   favorites       LearningFavorite[]
   recommendations LearningRecommendation[]
+  assignmentRules LearningAssignmentRule[]
   assignments     LearningAssignment[]
   requests        LearningRequest[]
   goalMaterials   DevelopmentGoalMaterial[]
@@ -943,16 +945,59 @@ model LearningAssignment {
   cancelledAt       DateTime?
   cancelledByUserId String?
   reminderSentAt    DateTime?
+  ruleId            String? // source = RULE bo'lsa — qaysi qoida bergan
   createdAt         DateTime                 @default(now())
   updatedAt         DateTime                 @default(now()) @updatedAt
 
-  organization Organization     @relation(fields: [organizationId], references: [id], onDelete: Cascade)
-  material     LearningMaterial @relation(fields: [materialId], references: [id], onDelete: Cascade)
+  organization Organization            @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+  material     LearningMaterial        @relation(fields: [materialId], references: [id], onDelete: Cascade)
+  rule         LearningAssignmentRule? @relation(fields: [ruleId], references: [id], onDelete: SetNull)
 
   @@index([organizationId, employeeId])
   @@index([organizationId, materialId, status])
   @@index([employeeId, materialId])
+  @@index([ruleId, status])
   @@map("learning_assignments")
+}
+
+enum LearningRuleType {
+  ONE_TIME // yaratilganda bir marta ishlaydi
+  PERMANENT // doimiy: yangi mos xodimlarga tayinlaydi, shartdan chiqqanlarnikini bekor qiladi
+}
+
+// Qoida orqali avtomatik tayinlash. Auditoriya mezonlari birlashmasi
+// (bo'lim YOKI lavozim YOKI filial), ixtiyoriy "faqat yangi xodimlar"
+// sharti bilan (AND). Cron yo'q — qoida voqealarda ishga tushadi.
+model LearningAssignmentRule {
+  id                        String                   @id @default(cuid())
+  organizationId            String
+  name                      String
+  materialId                String
+  type                      LearningRuleType
+  allOrganization           Boolean                  @default(false)
+  departmentIds             String[]                 @default([])
+  positionIds               String[]                 @default([])
+  branchIds                 String[]                 @default([])
+  hiredWithinDays           Int? // faqat ishga kirganiga N kundan oshmaganlar
+  reason                    LearningAssignmentReason @default(DEVELOPMENT)
+  reasonText                String?
+  note                      String?
+  dueInDays                 Int?
+  dueDate                   DateTime? // faqat ONE_TIME uchun
+  skipIfCompletedWithinDays Int?
+  cancelOutOfScope          Boolean                  @default(true)
+  isActive                  Boolean                  @default(true)
+  createdByUserId           String?
+  lastRunAt                 DateTime?
+  createdAt                 DateTime                 @default(now())
+  updatedAt                 DateTime                 @updatedAt
+
+  organization Organization         @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+  material     LearningMaterial     @relation(fields: [materialId], references: [id], onDelete: Cascade)
+  assignments  LearningAssignment[]
+
+  @@index([organizationId, isActive, type])
+  @@map("learning_assignment_rules")
 }
 
 enum LearningEventFormat {

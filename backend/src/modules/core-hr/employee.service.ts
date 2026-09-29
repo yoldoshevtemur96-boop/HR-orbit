@@ -1,5 +1,6 @@
 import type { EmploymentStatus, EmploymentType, Prisma, RoleName } from '@prisma/client';
 import { prisma } from '@/config/prisma';
+import { syncRulesForEmployee } from '@/modules/learning/rule.service';
 import { AppError } from '@/common/errors/AppError';
 import { recordAuditLog } from './auditLog.service';
 import { sanitizeEmployeeForRole, sanitizeEmployeeListForRole } from './employee.serializer';
@@ -136,6 +137,10 @@ export async function createEmployee(input: CreateEmployeeInput) {
 
     return created;
   });
+
+  // L&D: doimiy tayinlash qoidalariga mos bo'lsa — kurslar darhol tayinlanadi.
+  // Xato xodim yaratishni to'xtatmasligi kerak.
+  await syncRulesForEmployee(input.organizationId, employee.id).catch(() => undefined);
 
   return employee;
 }

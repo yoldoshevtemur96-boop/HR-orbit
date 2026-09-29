@@ -90,6 +90,7 @@ export interface AssignmentRow {
   reasonText: string | null;
   note: string | null;
   source: AssignmentSource;
+  rule: { id: string; name: string } | null;
   dueDate: string | null;
   createdAt: string;
   cancelledAt: string | null;
@@ -100,4 +101,36 @@ export interface AssignmentRow {
 export interface AssignmentList {
   counts: Record<AssignmentState, number>;
   rows: AssignmentRow[];
+}
+
+export type RuleType = 'ONE_TIME' | 'PERMANENT';
+
+export const RULE_TYPE_LABEL: Record<RuleType, string> = {
+  ONE_TIME: 'Bir martalik',
+  PERMANENT: 'Doimiy',
+};
+
+export interface AssignmentRuleRow {
+  id: string;
+  name: string;
+  type: RuleType;
+  isActive: boolean;
+  material: { id: string; title: string; type: LearningMaterialType };
+  audience: {
+    allOrganization: boolean;
+    departments: string[];
+    positions: string[];
+    branches: string[];
+    hiredWithinDays: number | null;
+  };
+  reason: AssignmentReason;
+  reasonText: string | null;
+  dueInDays: number | null;
+  dueDate: string | null;
+  skipIfCompletedWithinDays: number | null;
+  cancelOutOfScope: boolean;
+  lastRunAt: string | null;
+  createdAt: string;
+  activeAssignments: number;
+  cancelledAssignments: number;
 }

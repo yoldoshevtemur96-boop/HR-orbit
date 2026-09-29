@@ -1,4 +1,4 @@
-import type { LearningAssignmentReason, Prisma, RoleName } from '@prisma/client';
+import type { LearningAssignmentReason, LearningAssignmentSource, Prisma, RoleName } from '@prisma/client';
 import { prisma } from '@/config/prisma';
 import { AppError } from '@/common/errors/AppError';
 
@@ -105,39 +105,49 @@ async function getPublishedMaterial(organizationId: string, materialId: string) 
 
 // Auditoriyani 3 guruhga ajratadi: tayinlanadiganlar, faol tayinlovi
 // borlar (doim o'tkazib yuboriladi) va yaqinda tugatganlar (sozlama).
-async function planAssignment(auth: AuthContext, input: AssignInput) {
-  const scope = await getScope(auth);
-  const material = await getPublishedMaterial(auth.organizationId, input.materialId);
-  const audience = await resolveAudience(auth, scope, input.audience);
+// Qo'lda tayinlash ham, qoidalar ham shundan foydalanadi.
+export async function filterCandidates<T extends { id: string }>(
+  organizationId: string,
+  materialId: string,
+  audience: T[],
+  skipIfCompletedWithinDays?: number | null,
+) {
   const ids = audience.map((e) => e.id);
-
   const [active, progress] = await Promise.all([
     prisma.learningAssignment.findMany({
-      where: { organizationId: auth.organizationId, materialId: material.id, status: 'ACTIVE', employeeId: { in: ids } },
+      where: { organizationId, materialId, status: 'ACTIVE', employeeId: { in: ids } },
       select: { employeeId: true },
     }),
     prisma.learningProgress.findMany({
-      where: { organizationId: auth.organizationId, materialId: material.id, employeeId: { in: ids } },
+      where: { organizationId, materialId, employeeId: { in: ids } },
       select: { employeeId: true, status: true, completedAt: true },
     }),
   ]);
   const activeIds = new Set(active.map((a) => a.employeeId));
   const progressById = new Map(progress.map((p) => [p.employeeId, p]));
 
-  const threshold = input.skipIfCompletedWithinDays
-    ? new Date(Date.now() - input.skipIfCompletedWithinDays * 24 * 60 * 60 * 1000)
+  const threshold = skipIfCompletedWithinDays
+    ? new Date(Date.now() - skipIfCompletedWithinDays * 24 * 60 * 60 * 1000)
     : null;
 
-  const toAssign: typeof audience = [];
-  const skippedActive: typeof audience = [];
-  const skippedCompleted: typeof audience = [];
+  const toAssign: T[] = [];
+  const skippedActive: T[] = [];
+  const skippedCompleted: T[] = [];
   for (const employee of audience) {
     const p = progressById.get(employee.id);
     if (activeIds.has(employee.id)) skippedActive.push(employee);
     else if (threshold && p?.status === 'COMPLETED' && p.completedAt && p.completedAt >= threshold) skippedCompleted.push(employee);
     else toAssign.push(employee);
   }
-  return { material, toAssign, skippedActive, skippedCompleted, progressById };
+  return { toAssign, skippedActive, skippedCompleted, progressById };
+}
+
+async function planAssignment(auth: AuthContext, input: AssignInput) {
+  const scope = await getScope(auth);
+  const material = await getPublishedMaterial(auth.organizationId, input.materialId);
+  const audience = await resolveAudience(auth, scope, input.audience);
+  const split = await filterCandidates(auth.organizationId, material.id, audience, input.skipIfCompletedWithinDays);
+  return { material, ...split };
 }
 
 function summarizeEmployees(list: { id: string; fullName: string; employeeCode: string; department: { name: string } | null }[]) {
@@ -157,7 +167,7 @@ export async function previewAssignment(auth: AuthContext, input: AssignInput) {
   };
 }
 
-function resolveDueDate(input: AssignInput): Date | null {
+export function resolveDueDate(input: { dueDate?: Date | null; dueInDays?: number | null }): Date | null {
   if (input.dueDate) return input.dueDate;
   if (input.dueInDays) {
     const d = new Date();
@@ -168,8 +178,74 @@ function resolveDueDate(input: AssignInput): Date | null {
   return null;
 }
 
-function formatDateUz(date: Date) {
+export function formatDateUz(date: Date) {
   return date.toLocaleDateString('uz-UZ', { day: '2-digit', month: '2-digit', year: 'numeric', timeZone: 'Asia/Tashkent' });
+}
+
+export interface PerformAssignInput {
+  organizationId: string;
+  material: { id: string; title: string };
+  employees: { id: string; userId: string | null }[];
+  progressById: Map<string, { status: string }>;
+  assignedByUserId: string | null;
+  dueDate: Date | null;
+  note?: string | null;
+  reason: LearningAssignmentReason;
+  reasonText?: string | null;
+  source: LearningAssignmentSource;
+  ruleId?: string | null;
+}
+
+// Tayinlovlarni yaratadi, avval tugatganlarning progressini nollaydi va
+// bildirishnoma yuboradi. Qaytaradi — haqiqatda yaratilgan tayinlovlar soni.
+export async function performAssign(input: PerformAssignInput) {
+  if (input.employees.length === 0) return 0;
+  const employeeIds = input.employees.map((e) => e.id);
+  // Avval tugatgan xodim qayta tayinlansa — yangi urinish: progress noldan.
+  const completedBefore = employeeIds.filter((id) => input.progressById.get(id)?.status === 'COMPLETED');
+
+  const message =
+    `Sizga yangi o'quv material tayinlandi: "${input.material.title}"` +
+    (input.dueDate ? ` — muddat: ${formatDateUz(input.dueDate)}` : '');
+
+  return prisma.$transaction(async (tx) => {
+    const result = await tx.learningAssignment.createMany({
+      data: employeeIds.map((employeeId) => ({
+        organizationId: input.organizationId,
+        employeeId,
+        materialId: input.material.id,
+        assignedByUserId: input.assignedByUserId,
+        dueDate: input.dueDate,
+        note: input.note?.trim() || null,
+        reason: input.reason,
+        reasonText: input.reason === 'OTHER' ? input.reasonText?.trim() || null : null,
+        source: input.source,
+        ruleId: input.ruleId ?? null,
+      })),
+      skipDuplicates: true, // parallel so'rovda faol tayinlov unique indeksi bilan to'qnashsa
+    });
+
+    if (completedBefore.length > 0) {
+      await tx.learningProgress.updateMany({
+        where: { materialId: input.material.id, employeeId: { in: completedBefore } },
+        data: { progress: 0, status: 'IN_PROGRESS', completedAt: null },
+      });
+    }
+
+    await tx.notification.createMany({
+      data: input.employees
+        .filter((e) => e.userId)
+        .map((e) => ({
+          organizationId: input.organizationId,
+          userId: e.userId!,
+          type: 'LEARNING_ASSIGNED' as const,
+          message,
+          entityType: 'LearningMaterial',
+          entityId: input.material.id,
+        })),
+    });
+    return result.count;
+  });
 }
 
 export async function createAssignments(auth: AuthContext, input: AssignInput) {
@@ -181,50 +257,17 @@ export async function createAssignments(auth: AuthContext, input: AssignInput) {
     throw AppError.badRequest("Tayinlanadigan xodim yo'q — hammasida faol tayinlov bor yoki yaqinda tugatgan");
   }
 
-  const dueDate = resolveDueDate(input);
-  const employeeIds = plan.toAssign.map((e) => e.id);
-  // Avval tugatgan xodim qayta tayinlansa — yangi urinish: progress noldan.
-  const completedBefore = employeeIds.filter((id) => plan.progressById.get(id)?.status === 'COMPLETED');
-
-  const message =
-    `Sizga yangi o'quv material tayinlandi: "${plan.material.title}"` + (dueDate ? ` — muddat: ${formatDateUz(dueDate)}` : '');
-
-  const created = await prisma.$transaction(async (tx) => {
-    const result = await tx.learningAssignment.createMany({
-      data: employeeIds.map((employeeId) => ({
-        organizationId: auth.organizationId,
-        employeeId,
-        materialId: plan.material.id,
-        assignedByUserId: auth.userId,
-        dueDate,
-        note: input.note?.trim() || null,
-        reason: input.reason,
-        reasonText: input.reason === 'OTHER' ? input.reasonText?.trim() : null,
-        source: 'MANUAL',
-      })),
-      skipDuplicates: true, // parallel so'rovda faol tayinlov unique indeksi bilan to'qnashsa
-    });
-
-    if (completedBefore.length > 0) {
-      await tx.learningProgress.updateMany({
-        where: { materialId: plan.material.id, employeeId: { in: completedBefore } },
-        data: { progress: 0, status: 'IN_PROGRESS', completedAt: null },
-      });
-    }
-
-    await tx.notification.createMany({
-      data: plan.toAssign
-        .filter((e) => e.userId)
-        .map((e) => ({
-          organizationId: auth.organizationId,
-          userId: e.userId!,
-          type: 'LEARNING_ASSIGNED' as const,
-          message,
-          entityType: 'LearningMaterial',
-          entityId: plan.material.id,
-        })),
-    });
-    return result.count;
+  const created = await performAssign({
+    organizationId: auth.organizationId,
+    material: plan.material,
+    employees: plan.toAssign,
+    progressById: plan.progressById,
+    assignedByUserId: auth.userId,
+    dueDate: resolveDueDate(input),
+    note: input.note,
+    reason: input.reason,
+    reasonText: input.reasonText,
+    source: 'MANUAL',
   });
 
   return {
@@ -265,7 +308,7 @@ export async function listAssignments(
       employeeId: { in: employees.map((e) => e.id) },
       ...(query.materialId && { materialId: query.materialId }),
     },
-    include: { material: { select: { id: true, title: true, type: true } } },
+    include: { material: { select: { id: true, title: true, type: true } }, rule: { select: { id: true, name: true } } },
     orderBy: { createdAt: 'desc' },
     take: 2000,
   });
@@ -299,6 +342,7 @@ export async function listAssignments(
       reasonText: a.reasonText,
       note: a.note,
       source: a.source,
+      rule: a.rule,
       dueDate: a.dueDate,
       createdAt: a.createdAt,
       cancelledAt: a.cancelledAt,

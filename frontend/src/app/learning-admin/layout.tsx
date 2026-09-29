@@ -4,12 +4,14 @@ import Link from 'next/link';
 import { usePathname } from 'next/navigation';
 import { AppShell } from '@/components/AppShell';
 import { useAuthStore } from '@/store/authStore';
-import { LEARNING_ADMIN_ROLES } from '@/lib/learningAdmin';
+import { LEARNING_ADMIN_ROLES, isLearningHr } from '@/lib/learningAdmin';
 
-// L&D admin qismining bo'limlari. Hozircha faqat "Tayinlash" qurilgan —
-// Materiallar, Kurslar, Tadbirlar, So'rovlar va Hisobotlar keyingi
-// bosqichlarda shu yerga qo'shiladi.
-const TABS = [{ label: 'Tayinlash', href: '/learning-admin/assignments' }];
+// L&D admin qismining bo'limlari. Materiallar, Kurslar, Tadbirlar,
+// So'rovlar va Hisobotlar keyingi bosqichlarda shu yerga qo'shiladi.
+const TABS: { label: string; href: string; hrOnly?: boolean }[] = [
+  { label: 'Tayinlovlar', href: '/learning-admin/assignments' },
+  { label: 'Qoidalar', href: '/learning-admin/rules', hrOnly: true },
+];
 
 export default function LearningAdminLayout({ children }: { children: React.ReactNode }) {
   return (
@@ -34,7 +36,7 @@ function LearningAdminFrame({ children }: { children: React.ReactNode }) {
         <h1 className="mt-1 font-display text-2xl font-semibold text-stone-900">O&apos;qitishni boshqarish</h1>
       </div>
       <nav className="flex gap-1 border-b border-stone-200">
-        {TABS.map((tab) => {
+        {TABS.filter((tab) => !tab.hrOnly || isLearningHr(user.role)).map((tab) => {
           const active = pathname === tab.href || pathname?.startsWith(tab.href + '/');
           return (
             <Link

@@ -1,4 +1,5 @@
 import { prisma } from '@/config/prisma';
+import { syncRulesForEmployee } from '@/modules/learning/rule.service';
 import { AppError } from '@/common/errors/AppError';
 import { recordAuditLog } from './auditLog.service';
 import type { EmploymentStatus } from '@prisma/client';
@@ -24,6 +25,15 @@ interface ApplyEmploymentChangeInput {
 // tarixiy iz qoldirishi shart (foydalanuvchi talabi: "Never destroy
 // historical employment records").
 export async function applyEmploymentChange(input: ApplyEmploymentChangeInput) {
+  const updated = await applyEmploymentChangeTx(input);
+  // L&D: bo'lim/lavozim/filial/holat o'zgargach doimiy qoidalar qayta
+  // tekshiriladi — yangi shartga mos kurslar tayinlanadi, eskisidan
+  // chiqqanlarning tugallanmagan tayinlovi bekor qilinadi.
+  await syncRulesForEmployee(input.organizationId, input.employeeId).catch(() => undefined);
+  return updated;
+}
+
+async function applyEmploymentChangeTx(input: ApplyEmploymentChangeInput) {
   return prisma.$transaction(async (tx) => {
     const employee = await tx.employee.findFirst({
       where: { id: input.employeeId, organizationId: input.organizationId },

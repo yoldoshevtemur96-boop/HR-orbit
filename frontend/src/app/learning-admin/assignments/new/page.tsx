@@ -4,19 +4,15 @@ import { Suspense, useEffect, useMemo, useState } from 'react';
 import Link from 'next/link';
 import { useRouter, useSearchParams } from 'next/navigation';
 import { api } from '@/lib/api';
-import { MATERIAL_TYPE_LABEL, MaterialCover, formatDuration } from '@/components/learning/materialUi';
+import { FIELD_CLASS, MaterialPicker, OptionList, PreviewSummary, Section } from '@/components/learning-admin/formParts';
 import {
   ASSIGNMENT_REASON_LABEL,
   type AssignableMaterial,
   type AssignmentPreview,
   type AssignmentReason,
   type Audience,
-  type AudienceOption,
   type AudienceOptions,
 } from '@/types/learningAdmin';
-
-const FIELD_CLASS =
-  'w-full rounded-lg border border-stone-200 bg-white px-3 py-2 text-sm outline-none focus:border-accent focus:ring-2 focus:ring-accent/15';
 
 const REASONS: AssignmentReason[] = ['LEGAL', 'POSITION', 'ONBOARDING', 'DEVELOPMENT', 'OTHER'];
 
@@ -40,7 +36,6 @@ function NewAssignment() {
   const [options, setOptions] = useState<AudienceOptions | null>(null);
 
   const [materialId, setMaterialId] = useState(searchParams.get('materialId') ?? '');
-  const [materialSearch, setMaterialSearch] = useState('');
   const [audience, setAudience] = useState<Audience>(EMPTY_AUDIENCE);
   const [employeeSearch, setEmployeeSearch] = useState('');
   const [reason, setReason] = useState<AssignmentReason>('DEVELOPMENT');
@@ -119,9 +114,6 @@ function NewAssignment() {
     }
   }
 
-  const selectedMaterial = materials?.find((m) => m.id === materialId) ?? null;
-  const ms = materialSearch.trim().toLowerCase();
-  const visibleMaterials = (materials ?? []).filter((m) => !ms || m.title.toLowerCase().includes(ms));
   const es = employeeSearch.trim().toLowerCase();
   const visibleEmployees = (options?.employees ?? []).filter(
     (e) => !es || e.fullName.toLowerCase().includes(es) || e.employeeCode.toLowerCase().includes(es),
@@ -145,53 +137,7 @@ function NewAssignment() {
         <div className="flex flex-col gap-5">
           {/* 1. Material */}
           <Section step={1} title="Material">
-            {selectedMaterial ? (
-              <div className="flex items-center gap-3 rounded-lg border border-accent/40 bg-accent/5 p-3">
-                <MaterialCover material={selectedMaterial} className="h-12 w-12 flex-shrink-0 rounded-md" iconClassName="h-6 w-6" />
-                <div className="min-w-0 flex-1">
-                  <p className="truncate text-sm font-semibold text-stone-800">{selectedMaterial.title}</p>
-                  <p className="text-xs text-stone-500">
-                    {MATERIAL_TYPE_LABEL[selectedMaterial.type]} · {formatDuration(selectedMaterial.durationMinutes)}
-                  </p>
-                </div>
-                <button type="button" onClick={() => setMaterialId('')} className="text-sm text-stone-500 hover:text-stone-800">
-                  O&apos;zgartirish
-                </button>
-              </div>
-            ) : (
-              <>
-                <input
-                  type="search"
-                  value={materialSearch}
-                  onChange={(e) => setMaterialSearch(e.target.value)}
-                  placeholder="Katalogdan qidirish"
-                  className={FIELD_CLASS}
-                />
-                <div className="max-h-72 overflow-y-auto rounded-lg border border-stone-200">
-                  {materials === null ? (
-                    <p className="px-3 py-2 text-sm text-stone-400">Yuklanmoqda...</p>
-                  ) : visibleMaterials.length === 0 ? (
-                    <p className="px-3 py-2 text-sm text-stone-400">Topilmadi</p>
-                  ) : (
-                    visibleMaterials.map((m) => (
-                      <button
-                        key={m.id}
-                        type="button"
-                        onClick={() => setMaterialId(m.id)}
-                        className="flex w-full items-center gap-3 border-b border-stone-100 px-3 py-2 text-left last:border-0 hover:bg-stone-50"
-                      >
-                        <MaterialCover material={m} className="h-9 w-9 flex-shrink-0 rounded" iconClassName="h-4 w-4" />
-                        <span className="min-w-0 flex-1 truncate text-sm text-stone-800">{m.title}</span>
-                        <span className="text-xs text-stone-400">{MATERIAL_TYPE_LABEL[m.type]}</span>
-                        {m.activeAssignments > 0 && (
-                          <span className="text-xs text-stone-400">· {m.activeAssignments} ta tayinlangan</span>
-                        )}
-                      </button>
-                    ))
-                  )}
-                </div>
-              </>
-            )}
+            <MaterialPicker materials={materials} value={materialId} onChange={setMaterialId} />
           </Section>
 
           {/* 2. Kimga */}
@@ -357,41 +303,12 @@ function NewAssignment() {
         {/* Natija paneli */}
         <aside className="sticky top-4 flex flex-col gap-3 rounded-xl border border-stone-200 bg-white p-5">
           <p className="text-sm font-semibold text-stone-900">Natija</p>
-          {!materialId || !hasAudience ? (
-            <p className="text-sm text-stone-400">Material va auditoriyani tanlang.</p>
-          ) : isPreviewing && !preview ? (
-            <p className="text-sm text-stone-400">Hisoblanmoqda...</p>
-          ) : preview ? (
-            <div className={`flex flex-col gap-2 text-sm ${isPreviewing ? 'opacity-60' : ''}`}>
-              <p className="text-3xl font-semibold text-accent">{preview.toAssignCount}</p>
-              <p className="-mt-1 text-stone-500">xodimga tayinlanadi</p>
-              {preview.skippedActiveCount > 0 && (
-                <p className="text-xs text-stone-500">
-                  {preview.skippedActiveCount} tasida faol tayinlov bor — o&apos;tkazib yuboriladi
-                </p>
-              )}
-              {preview.skippedCompletedCount > 0 && (
-                <p className="text-xs text-stone-500">
-                  {preview.skippedCompletedCount} tasi yaqinda o&apos;tgan — o&apos;tkazib yuboriladi
-                </p>
-              )}
-              {preview.toAssign.length > 0 && (
-                <details className="text-xs text-stone-600">
-                  <summary className="cursor-pointer text-stone-500">Ro&apos;yxatni ko&apos;rish</summary>
-                  <ul className="mt-2 max-h-48 overflow-y-auto">
-                    {preview.toAssign.map((e) => (
-                      <li key={e.id} className="py-0.5">
-                        {e.fullName}
-                        {e.department && <span className="text-stone-400"> · {e.department}</span>}
-                      </li>
-                    ))}
-                  </ul>
-                </details>
-              )}
-            </div>
-          ) : (
-            <p className="text-sm text-stone-400">Hisoblab bo&apos;lmadi</p>
-          )}
+          <PreviewSummary
+            ready={Boolean(materialId) && hasAudience}
+            preview={preview}
+            isLoading={isPreviewing}
+            emptyHint="Material va auditoriyani tanlang."
+          />
 
           {error && <p className="rounded-md bg-rose-50 px-3 py-2 text-sm text-rose-700">{error}</p>}
 
@@ -405,51 +322,6 @@ function NewAssignment() {
           </button>
           <p className="text-xs text-stone-400">Xodimlarga bildirishnoma yuboriladi, muddatdan 3 kun oldin eslatiladi.</p>
         </aside>
-      </div>
-    </div>
-  );
-}
-
-function Section({ step, title, children }: { step: number; title: string; children: React.ReactNode }) {
-  return (
-    <section className="flex flex-col gap-3 rounded-xl border border-stone-200 bg-white p-5">
-      <h2 className="flex items-center gap-2 text-base font-semibold text-stone-900">
-        <span className="flex h-6 w-6 items-center justify-center rounded-full bg-accent text-xs font-bold text-white">{step}</span>
-        {title}
-      </h2>
-      {children}
-    </section>
-  );
-}
-
-function OptionList({
-  title,
-  items,
-  selected,
-  onToggle,
-}: {
-  title: string;
-  items: AudienceOption[];
-  selected: string[];
-  onToggle: (id: string) => void;
-}) {
-  return (
-    <div className="flex flex-col gap-2">
-      <p className="text-xs font-medium text-stone-500">
-        {title} {selected.length > 0 && `(${selected.length})`}
-      </p>
-      <div className="max-h-44 overflow-y-auto rounded-lg border border-stone-200">
-        {items.length === 0 && <p className="px-3 py-2 text-sm text-stone-400">Yo&apos;q</p>}
-        {items.map((item) => (
-          <label
-            key={item.id}
-            className="flex cursor-pointer items-center gap-2 border-b border-stone-100 px-3 py-1.5 text-sm last:border-0 hover:bg-stone-50"
-          >
-            <input type="checkbox" checked={selected.includes(item.id)} onChange={() => onToggle(item.id)} />
-            <span className="flex-1 truncate text-stone-700">{item.name}</span>
-            <span className="text-xs text-stone-400">{item.employeeCount}</span>
-          </label>
-        ))}
       </div>
     </div>
   );

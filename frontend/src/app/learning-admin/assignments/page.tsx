@@ -1,7 +1,8 @@
 'use client';
 
-import { useCallback, useEffect, useState } from 'react';
+import { Suspense, useCallback, useEffect, useState } from 'react';
 import Link from 'next/link';
+import { useSearchParams } from 'next/navigation';
 import { api } from '@/lib/api';
 import { Modal } from '@/components/hr/Modal';
 import { MATERIAL_TYPE_LABEL, formatDate } from '@/components/learning/materialUi';
@@ -31,10 +32,24 @@ function toDateInput(iso: string | null) {
 }
 
 export default function AssignmentsPage() {
+  return (
+    <Suspense fallback={<p className="text-sm text-stone-400">Yuklanmoqda...</p>}>
+      <Assignments />
+    </Suspense>
+  );
+}
+
+function Assignments() {
+  const searchParams = useSearchParams();
   const [data, setData] = useState<AssignmentList | null>(null);
   const [materials, setMaterials] = useState<AssignableMaterial[]>([]);
   const [options, setOptions] = useState<AudienceOptions | null>(null);
-  const [filters, setFilters] = useState({ materialId: '', departmentId: '', state: '' as '' | AssignmentState, search: '' });
+  const [filters, setFilters] = useState({
+    materialId: searchParams.get('materialId') ?? '',
+    departmentId: '',
+    state: '' as '' | AssignmentState,
+    search: '',
+  });
   const [search, setSearch] = useState('');
   const [editing, setEditing] = useState<AssignmentRow | null>(null);
   const [editDue, setEditDue] = useState('');
@@ -213,7 +228,8 @@ export default function AssignmentsPage() {
                   <td className="px-4 py-3">
                     <p className="text-stone-800">{row.material.title}</p>
                     <p className="text-xs text-stone-400">
-                      {MATERIAL_TYPE_LABEL[row.material.type]} · {ASSIGNMENT_SOURCE_LABEL[row.source]} · {formatDate(row.createdAt)}
+                      {MATERIAL_TYPE_LABEL[row.material.type]} · {row.rule ? `Qoida: ${row.rule.name}` : ASSIGNMENT_SOURCE_LABEL[row.source]} ·{' '}
+                      {formatDate(row.createdAt)}
                     </p>
                   </td>
                   <td className="px-4 py-3 text-stone-600">
