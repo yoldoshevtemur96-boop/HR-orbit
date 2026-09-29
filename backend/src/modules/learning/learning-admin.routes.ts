@@ -4,6 +4,7 @@ import { authenticate, requireRole } from '@/middleware/auth';
 import * as assignmentService from './assignment.service';
 import * as ruleService from './rule.service';
 import { getOverview } from './overview.service';
+import * as catalogService from './catalog.service';
 
 // L&D admin qismi. HR (SUPER_ADMIN/HR_MANAGER) — butun tashkilot;
 // DEPARTMENT_HEAD — faqat o'z bo'ysunuvchilari (scope service ichida).
@@ -138,4 +139,57 @@ learningAdminRouter.post('/rules/:id/deactivate', async (req, res) => {
 
 learningAdminRouter.post('/rules/:id/activate', async (req, res) => {
   res.json(await ruleService.activateRule(req.auth!, req.params.id));
+});
+
+// ---------------------------------------------------------------------------
+// Katalog (faqat HR — tekshiruv service ichida)
+// ---------------------------------------------------------------------------
+
+const materialTypeEnum = z.enum(['AUDIO', 'VIDEO', 'ARTICLE', 'BOOK', 'COURSE']);
+const publishStatusEnum = z.enum(['DRAFT', 'PUBLISHED', 'ARCHIVED']);
+const optionalUrl = z
+  .string()
+  .trim()
+  .max(2000)
+  .url("Havola noto'g'ri — https:// bilan boshlang")
+  .nullable()
+  .optional()
+  .or(z.literal('').transform(() => null));
+
+const materialSchema = z.object({
+  title: z.string().trim().min(1, 'Nomini kiriting').max(300),
+  description: z.string().trim().max(5000).nullable().optional(),
+  type: materialTypeEnum,
+  coverUrl: optionalUrl,
+  contentUrl: optionalUrl,
+  durationMinutes: z.coerce.number().int().min(0).max(100000).optional(),
+  author: z.string().trim().max(200).nullable().optional(),
+  tags: z.array(z.string().trim().max(40)).max(20).optional(),
+  requiresApproval: z.boolean().optional(),
+  status: publishStatusEnum.optional(),
+});
+
+const catalogListSchema = z.object({
+  search: z.string().trim().optional(),
+  type: materialTypeEnum.optional(),
+  status: publishStatusEnum.optional(),
+});
+
+learningAdminRouter.get('/catalog', async (req, res) => {
+  const query = catalogListSchema.parse(req.query);
+  res.json(await catalogService.listCatalog(req.auth!, query));
+});
+
+learningAdminRouter.get('/catalog/:id', async (req, res) => {
+  res.json(await catalogService.getCatalogMaterial(req.auth!, req.params.id));
+});
+
+learningAdminRouter.post('/catalog', async (req, res) => {
+  const input = materialSchema.parse(req.body);
+  res.status(201).json(await catalogService.createMaterial(req.auth!, input));
+});
+
+learningAdminRouter.patch('/catalog/:id', async (req, res) => {
+  const input = materialSchema.partial().parse(req.body);
+  res.json(await catalogService.updateMaterial(req.auth!, req.params.id, input));
 });

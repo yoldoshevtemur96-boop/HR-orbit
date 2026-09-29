@@ -9,6 +9,7 @@ import { LEARNING_ADMIN_ROLES } from '@/lib/learningAdmin';
 // Ichki sahifalar nomlari — yo'l ko'rsatkichi (breadcrumb) uchun.
 // Bo'limlarga o'tish bosh sahifadagi (/learning-admin) kartalar orqali.
 const SEGMENT_LABEL: Record<string, string> = {
+  catalog: 'Katalog',
   assignments: 'Tayinlovlar',
   rules: 'Qoidalar',
   new: 'Yangi',
@@ -33,7 +34,8 @@ function LearningAdminFrame({ children }: { children: React.ReactNode }) {
   // /learning-admin/assignments/new -> Tayinlovlar / Yangi
   const segments = pathname.replace(/^\/learning-admin\/?/, '').split('/').filter(Boolean);
   const crumbs = segments.map((segment, i) => ({
-    label: SEGMENT_LABEL[segment] ?? segment,
+    // Noma'lum segment — yozuv id'si (masalan /catalog/<id>) => tahrirlash sahifasi
+    label: SEGMENT_LABEL[segment] ?? 'Tahrirlash',
     href: '/learning-admin/' + segments.slice(0, i + 1).join('/'),
   }));
   const isHub = crumbs.length === 0;

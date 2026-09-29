@@ -38,12 +38,7 @@ export default function LearningAdminHubPage() {
     <div className="flex flex-col gap-8">
       {data.isHr && data.catalog && (
         <div className="grid gap-5 lg:grid-cols-[1fr_300px]">
-          <Card
-            title="Katalog"
-            addHref={null}
-            allHref="/learning/catalog"
-            soonNote="Material qo'shish va tahrirlash — tez orada"
-          >
+          <Card title="Katalog" addHref="/learning-admin/catalog/new" allHref="/learning-admin/catalog">
             {data.catalog.latest.length === 0 ? (
               <p className="text-sm text-stone-400">Katalog bo&apos;sh.</p>
             ) : (
@@ -51,7 +46,7 @@ export default function LearningAdminHubPage() {
                 {data.catalog.latest.map((m) => (
                   <li key={m.id}>
                     <Link
-                      href={`/learning/materials/${m.id}`}
+                      href={`/learning-admin/catalog/${m.id}`}
                       className="flex items-center gap-3 rounded-lg px-1 py-2.5 transition hover:bg-stone-50"
                     >
                       <MaterialCover material={m} className="h-9 w-9 flex-shrink-0 rounded-md" iconClassName="h-4 w-4" />
@@ -64,7 +59,15 @@ export default function LearningAdminHubPage() {
                 ))}
               </ul>
             )}
-            <p className="mt-1 text-xs text-stone-400">Jami: {data.catalog.total} ta material</p>
+            <div className="mt-1 flex items-center justify-between">
+              <p className="text-xs text-stone-400">Jami: {data.catalog.total} ta material</p>
+              <Link
+                href="/learning-admin/catalog/new"
+                className="rounded-lg bg-accent px-3 py-1.5 text-xs font-semibold text-white transition hover:opacity-90"
+              >
+                + Material yaratish
+              </Link>
+            </div>
           </Card>
 
           <SummaryCard assignments={data.assignments} />
