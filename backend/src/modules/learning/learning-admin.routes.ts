@@ -3,11 +3,17 @@ import { z } from 'zod';
 import { authenticate, requireRole } from '@/middleware/auth';
 import * as assignmentService from './assignment.service';
 import * as ruleService from './rule.service';
+import { getOverview } from './overview.service';
 
 // L&D admin qismi. HR (SUPER_ADMIN/HR_MANAGER) — butun tashkilot;
 // DEPARTMENT_HEAD — faqat o'z bo'ysunuvchilari (scope service ichida).
 export const learningAdminRouter = Router();
 learningAdminRouter.use(authenticate, requireRole('SUPER_ADMIN', 'HR_MANAGER', 'DEPARTMENT_HEAD'));
+
+// Bosh sahifa kartalari uchun jonli raqamlar
+learningAdminRouter.get('/overview', async (req, res) => {
+  res.json(await getOverview(req.auth!));
+});
 
 // ---------------------------------------------------------------------------
 // Ma'lumotnomalar

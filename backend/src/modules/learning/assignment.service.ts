@@ -19,12 +19,12 @@ export function isLearningAdmin(role: RoleName) {
   return role === 'SUPER_ADMIN' || role === 'HR_MANAGER';
 }
 
-interface Scope {
+export interface Scope {
   all: boolean;
   employeeIds: Set<string>;
 }
 
-async function getScope(auth: AuthContext): Promise<Scope> {
+export async function getScope(auth: AuthContext): Promise<Scope> {
   if (isLearningAdmin(auth.role)) return { all: true, employeeIds: new Set() };
   if (auth.role !== 'DEPARTMENT_HEAD') throw AppError.forbidden();
 
@@ -49,7 +49,7 @@ async function getScope(auth: AuthContext): Promise<Scope> {
   return { all: false, employeeIds: new Set(subordinates.map((e) => e.id)) };
 }
 
-function scopeWhere(scope: Scope): Prisma.EmployeeWhereInput {
+export function scopeWhere(scope: Scope): Prisma.EmployeeWhereInput {
   return scope.all ? {} : { id: { in: [...scope.employeeIds] } };
 }
 

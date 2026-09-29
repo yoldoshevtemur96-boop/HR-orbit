@@ -83,10 +83,13 @@ export default function RulesPage() {
   return (
     <div className="flex flex-col gap-5">
       <div className="flex flex-wrap items-center justify-between gap-3">
-        <p className="max-w-2xl text-sm text-stone-500">
+        <div className="max-w-2xl">
+          <h1 className="font-display text-2xl font-semibold text-stone-900">Qoidalar</h1>
+          <p className="mt-1 text-sm text-stone-500">
           Qoida shartga mos xodimlarga kursni avtomatik tayinlaydi. <b>Doimiy</b> qoida yangi kelgan yoki boshqa bo&apos;limga
           o&apos;tgan xodimlarga ham darhol tayinlaydi, shartdan chiqqanlarning tugallanmagan tayinlovini bekor qiladi.
-        </p>
+          </p>
+        </div>
         <Link
           href="/learning-admin/rules/new"
           className="rounded-lg bg-accent px-4 py-2.5 text-sm font-semibold text-white transition hover:opacity-90"

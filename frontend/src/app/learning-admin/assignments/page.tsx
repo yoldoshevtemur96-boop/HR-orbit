@@ -106,7 +106,10 @@ function Assignments() {
   return (
     <div className="flex flex-col gap-5">
       <div className="flex flex-wrap items-center justify-between gap-3">
-        <p className="text-sm text-stone-500">Xodimlarga tayinlangan materiallar va ularning bajarilishi</p>
+        <div>
+          <h1 className="font-display text-2xl font-semibold text-stone-900">Tayinlovlar</h1>
+          <p className="mt-1 text-sm text-stone-500">Xodimlarga tayinlangan materiallar va ularning bajarilishi</p>
+        </div>
         <Link
           href="/learning-admin/assignments/new"
           className="rounded-lg bg-accent px-4 py-2.5 text-sm font-semibold text-white transition hover:opacity-90"
