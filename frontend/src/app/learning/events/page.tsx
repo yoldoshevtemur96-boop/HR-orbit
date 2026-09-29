@@ -35,7 +35,7 @@ export default function LearningEventsPage() {
         <p className="mt-1 text-sm text-stone-500">Treninglar, vebinarlar va ichki tadbirlar</p>
       </div>
 
-      <nav className="flex gap-1 border-b border-stone-200">
+      <nav className="flex gap-1 overflow-x-auto border-b border-stone-200">
         {SCOPES.map((s) => (
           <button
             key={s.key}

@@ -193,7 +193,7 @@ export default function LearningHomePage() {
 
       <section className="flex flex-col gap-4 rounded-2xl bg-sky-50/60 p-6">
         <h2 className="font-display text-xl font-semibold text-stone-900">O&apos;qish</h2>
-        <nav className="flex gap-1 border-b border-stone-200">
+        <nav className="flex gap-1 overflow-x-auto border-b border-stone-200">
           {TABS.map((t) => (
             <button
               key={t.key}

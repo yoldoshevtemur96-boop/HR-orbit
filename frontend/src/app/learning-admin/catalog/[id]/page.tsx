@@ -191,7 +191,7 @@ export default function EditMaterialPage() {
         </div>
       </div>
 
-      <nav className="flex gap-1 border-b border-stone-200">
+      <nav className="flex gap-1 overflow-x-auto border-b border-stone-200">
         {(
           [
             ['material', 'Material'],

@@ -130,7 +130,7 @@ function Batches() {
             onChange={(e) => setSearch(e.target.value)}
             onBlur={() => setFilters((f) => ({ ...f, search: search.trim() }))}
             placeholder="Tayinlov yoki material nomi"
-            className={`${FIELD_CLASS} w-64`}
+            className={`${FIELD_CLASS} w-full sm:w-64`}
           />
         </form>
         <div>

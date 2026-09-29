@@ -91,7 +91,7 @@ function CatalogAdmin() {
         </Link>
       </div>
 
-      <nav className="flex gap-1 border-b border-stone-200">
+      <nav className="flex gap-1 overflow-x-auto border-b border-stone-200">
         {STATUS_TABS.map((t) => (
           <button
             key={t.key}

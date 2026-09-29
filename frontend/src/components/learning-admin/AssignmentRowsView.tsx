@@ -141,7 +141,7 @@ export function AssignmentRowsView({ batchId, onChanged }: { batchId: string; on
             onChange={(e) => setSearch(e.target.value)}
             onBlur={() => setFilters((f) => ({ ...f, search: search.trim() }))}
             placeholder="F.I.Sh. yoki tabel raqami"
-            className={`${FIELD_CLASS} w-60`}
+            className={`${FIELD_CLASS} w-full sm:w-60`}
           />
         </form>
         {hasFilters && (

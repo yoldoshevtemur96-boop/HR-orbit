@@ -128,7 +128,7 @@ function Rules() {
       </div>
 
       <div className="flex flex-wrap items-end justify-between gap-3 border-b border-stone-200">
-        <nav className="flex gap-1">
+        <nav className="flex gap-1 overflow-x-auto">
           {STATUS_TABS.map((s) => (
             <button
               key={s || 'all'}

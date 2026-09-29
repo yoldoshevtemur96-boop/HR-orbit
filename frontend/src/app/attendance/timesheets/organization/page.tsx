@@ -324,7 +324,7 @@ export default function OrganizationTimesheetListPage() {
         <h1 className="mt-1 font-display text-2xl font-semibold text-stone-900">Tashkilot tabeli</h1>
       </div>
 
-      <nav className="grid grid-cols-3 gap-3">
+      <nav className="grid gap-3 sm:grid-cols-3">
         {TABS.map((t) => {
           const active = tab === t.key;
           const count = tabCounts[t.key];
@@ -546,7 +546,7 @@ export default function OrganizationTimesheetListPage() {
                       value={approvedSearch}
                       onChange={(e) => setApprovedSearch(e.target.value)}
                       placeholder="F.I.Sh., tabel raqami yoki lavozim"
-                      className={`${FIELD_CLASS} w-72`}
+                      className={`${FIELD_CLASS} w-full sm:w-72`}
                     />
                   </FilterField>
                 </FilterBar>

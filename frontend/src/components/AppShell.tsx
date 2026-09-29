@@ -1,6 +1,6 @@
 'use client';
 
-import { useEffect } from 'react';
+import { useEffect, useState } from 'react';
 import { useRouter } from 'next/navigation';
 import { useAuthStore } from '@/store/authStore';
 import { NotificationBell } from './NotificationBell';
@@ -13,6 +13,8 @@ import { Sidebar } from './Sidebar';
 export function AppShell({ children }: { children: React.ReactNode }) {
   const router = useRouter();
   const { user, isHydrated, hydrate } = useAuthStore();
+  // Kichik ekranlarda (lg dan past) chap menyu yashirin — ☰ bilan ochiladi
+  const [isMenuOpen, setIsMenuOpen] = useState(false);
 
   useEffect(() => {
     hydrate();
@@ -33,12 +35,24 @@ export function AppShell({ children }: { children: React.ReactNode }) {
   }
 
   return (
-    <div className="flex min-h-screen bg-[#f5f6f4]">
-      <Sidebar />
+    // Ekran balandligiga qat'iy: menyu va yuqori panel joyida turadi,
+    // faqat <main> aylanadi (scroll).
+    <div className="flex h-screen overflow-hidden bg-[#f5f6f4]">
+      <Sidebar mobileOpen={isMenuOpen} onClose={() => setIsMenuOpen(false)} />
 
-      <div className="flex min-w-0 flex-1 flex-col">
-        <header className="flex items-center justify-between gap-4 border-b border-stone-200 bg-white px-8 py-4">
-          <div className="relative max-w-sm flex-1">
+      <div className="flex h-full min-w-0 flex-1 flex-col">
+        <header className="flex flex-shrink-0 items-center justify-between gap-3 border-b border-stone-200 bg-white px-4 py-3 sm:px-6 lg:px-8 lg:py-4">
+          <button
+            type="button"
+            onClick={() => setIsMenuOpen(true)}
+            aria-label="Menyuni ochish"
+            className="flex h-9 w-9 flex-shrink-0 items-center justify-center rounded-lg text-stone-600 hover:bg-stone-100 lg:hidden"
+          >
+            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" className="h-5 w-5">
+              <path d="M4 6h16M4 12h16M4 18h16" />
+            </svg>
+          </button>
+          <div className="relative hidden max-w-sm flex-1 md:block">
             <svg
               viewBox="0 0 24 24"
               fill="none"
@@ -57,14 +71,14 @@ export function AppShell({ children }: { children: React.ReactNode }) {
             />
           </div>
 
-          <div className="flex items-center gap-3">
+          <div className="ml-auto flex items-center gap-3">
             <NotificationBell />
             <RoleSwitcher />
           </div>
         </header>
 
-        <main className="flex-1 overflow-y-auto px-8 py-8">
-          <div className="mx-auto max-w-[1600px]">{children}</div>
+        <main className="min-h-0 flex-1 overflow-y-auto overflow-x-hidden px-4 py-5 sm:px-6 lg:px-8 lg:py-8">
+          <div className="mx-auto w-full min-w-0 max-w-[1600px]">{children}</div>
         </main>
       </div>
     </div>

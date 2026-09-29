@@ -1,5 +1,6 @@
 'use client';
 
+import { useEffect } from 'react';
 import Link from 'next/link';
 import { usePathname } from 'next/navigation';
 import { useAuthStore } from '@/store/authStore';
@@ -61,13 +62,25 @@ const ICONS: Record<string, JSX.Element> = {
   ),
 };
 
-export function Sidebar() {
+export function Sidebar({ mobileOpen = false, onClose }: { mobileOpen?: boolean; onClose?: () => void }) {
   const pathname = usePathname();
   const user = useAuthStore((s) => s.user);
   const logout = useAuthStore((s) => s.logout);
 
+  // Sahifa almashganda mobil menyu yopiladi
+  useEffect(() => {
+    onClose?.();
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [pathname]);
+
   return (
-    <aside className="flex h-screen w-72 flex-shrink-0 flex-col bg-[#151b26] text-stone-300">
+    <>
+      {mobileOpen && <div className="fixed inset-0 z-40 bg-black/40 lg:hidden" onClick={onClose} aria-hidden />}
+      <aside
+        className={`fixed inset-y-0 left-0 z-50 flex h-full w-72 flex-shrink-0 flex-col bg-[#151b26] text-stone-300 transition-transform duration-200 lg:static lg:z-auto lg:w-64 lg:translate-x-0 xl:w-72 ${
+          mobileOpen ? 'translate-x-0' : '-translate-x-full'
+        }`}
+      >
       <div className="flex items-center gap-3 px-6 py-6">
         <span className="flex h-10 w-10 items-center justify-center rounded-lg bg-accent text-base font-bold text-white">
           H
@@ -76,6 +89,14 @@ export function Sidebar() {
           <p className="text-base font-semibold text-white">HR Orbit</p>
           <p className="text-xs text-stone-400">HR-platforma</p>
         </div>
+        <button
+          type="button"
+          onClick={onClose}
+          aria-label="Menyuni yopish"
+          className="ml-auto flex h-8 w-8 items-center justify-center rounded-lg text-stone-400 hover:bg-white/10 hover:text-white lg:hidden"
+        >
+          ✕
+        </button>
       </div>
 
       <nav className="flex-1 overflow-y-auto px-4 py-3">
@@ -128,6 +149,7 @@ export function Sidebar() {
           </button>
         </div>
       )}
-    </aside>
+      </aside>
+    </>
   );
 }
