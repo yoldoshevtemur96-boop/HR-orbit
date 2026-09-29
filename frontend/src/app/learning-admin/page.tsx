@@ -98,7 +98,7 @@ export default function LearningAdminHubPage() {
             subtitle={data.isHr ? 'kurslarni xodimlarga tayinlash' : "o'z xodimlaringizga kurs tayinlash"}
             icon={<path d="M9 11a4 4 0 1 0 0-8 4 4 0 0 0 0 8Zm-6 9a6 6 0 0 1 12 0M17 8l2 2 3-4" />}
             iconClass="bg-emerald-50 text-emerald-600"
-            addHref="/learning-admin/assignments/new"
+            addHref={data.isHr ? "/learning-admin/rules/new" : null}
             allHref="/learning-admin/assignments"
           >
             <div className="flex flex-col gap-2">

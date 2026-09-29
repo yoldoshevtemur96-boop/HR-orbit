@@ -45,7 +45,7 @@ function NewRule() {
   return (
     <div className="flex flex-col gap-5">
       <h1 className="font-display text-2xl font-semibold text-stone-900">
-        {materialId ? 'Yangi lokal qoida' : 'Yangi global qoida'}
+        {materialId ? 'Yangi lokal qoida' : 'Yangi tayinlash (qoida)'}
       </h1>
       {materialId && !localMaterial ? (
         <p className="text-sm text-stone-400">Yuklanmoqda...</p>

@@ -238,7 +238,7 @@ function Rules() {
                         Hozir ishga tushirish
                       </button>
                     )}
-                    {rule.status === 'ACTIVE' && rule.type === 'PERMANENT' && (
+                    {rule.status === 'ACTIVE' && (
                       <button type="button" disabled={busy} onClick={() => setConfirm({ rule, action: 'stop' })} className={btn}>
                         To&apos;xtatish
                       </button>

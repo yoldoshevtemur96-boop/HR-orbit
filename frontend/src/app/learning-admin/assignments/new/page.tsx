@@ -4,7 +4,7 @@ import { Suspense, useEffect, useMemo, useState } from 'react';
 import Link from 'next/link';
 import { useRouter, useSearchParams } from 'next/navigation';
 import { api } from '@/lib/api';
-import { FIELD_CLASS, MaterialPicker, OptionList, PreviewSummary, Section } from '@/components/learning-admin/formParts';
+import { FIELD_CLASS, OptionList, PreviewSummary, Section } from '@/components/learning-admin/formParts';
 import {
   ASSIGNMENT_REASON_LABEL,
   type AssignableMaterial,
@@ -67,6 +67,12 @@ function NewAssignment() {
     audience.positionIds.length > 0 ||
     audience.branchIds.length > 0 ||
     audience.employeeIds.length > 0;
+
+  // Material tanlanmaydi: bu sahifa faqat kurs ichidan (?materialId=) yoki
+  // tayinlovga xodim qo'shish (?batchId=) uchun. Aks holda — qoida yaratish.
+  useEffect(() => {
+    if (!searchParams.get('materialId') && !batchId) router.replace('/learning-admin/rules/new');
+  }, [searchParams, batchId, router]);
 
   useEffect(() => {
     if (!batchId) return;
@@ -158,7 +164,7 @@ function NewAssignment() {
               <p className="text-xs text-stone-400">Sabab va muddat tayinlovning o&apos;zidan olinadi — faqat kimga qo&apos;shishni tanlang.</p>
             </Section>
           ) : (
-            <Section step={1} title="Tayinlov va material">
+            <Section step={1} title="Tayinlov">
               <div>
                 <label className="mb-1 block text-xs font-medium text-stone-500">Tayinlov nomi</label>
                 <input
@@ -169,7 +175,12 @@ function NewAssignment() {
                   maxLength={200}
                 />
               </div>
-              <MaterialPicker materials={materials} value={materialId} onChange={setMaterialId} />
+              <div className="rounded-lg border border-stone-200 bg-stone-50 px-3 py-2.5 text-sm">
+                <span className="text-xs text-stone-400">Kurs: </span>
+                <span className="font-medium text-stone-800">
+                  {materials?.find((m) => m.id === materialId)?.title ?? 'Yuklanmoqda...'}
+                </span>
+              </div>
             </Section>
           )}
 

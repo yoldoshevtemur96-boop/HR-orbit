@@ -118,9 +118,22 @@ export async function runRule(ruleId: string, onlyEmployeeId?: string, onlyMater
   const audience = materials.length ? await resolveRuleAudience(rule, true, onlyEmployeeId) : [];
   const dueDate = resolveDueDate({ dueDate: rule.type === 'ONE_TIME' ? rule.dueDate : null, dueInDays: rule.dueInDays });
 
+  // Bir martalik qoida har bir kurs uchun faqat bir marta: shu kurs bo'yicha
+  // tayinlovi (batch) bor bo'lsa — qayta ishlamaydi (qayta tayinlab,
+  // o'tganlarning progressini nollamasligi uchun).
+  const doneMaterialIds =
+    rule.type === 'ONE_TIME'
+      ? new Set(
+          (
+            await prisma.learningAssignmentBatch.findMany({ where: { ruleId: rule.id }, select: { materialId: true } })
+          ).map((b) => b.materialId),
+        )
+      : new Set<string>();
+
   let assigned = 0;
   let cancelled = 0;
   for (const material of materials) {
+    if (doneMaterialIds.has(material.id)) continue;
     const split = await filterCandidates(rule.organizationId, material.id, audience, rule.skipIfCompletedWithinDays);
 
     // Har bir (qoida, kurs) juftligi — "Tayinlovlar" ro'yxatida bitta qator
@@ -167,10 +180,14 @@ export async function runRule(ruleId: string, onlyEmployeeId?: string, onlyMater
 
   await prisma.learningAssignmentRule.update({
     where: { id: rule.id },
-    // Bir martalik qoida to'liq ishlagach — Bajarildi
+    // Bir martalik LOKAL qoida ishlagach — Bajarildi. Bir martalik GLOBAL
+    // qoida esa shablon: har bir kursga biriktirilganda o'sha kurs uchun bir
+    // marta ishlaydi va faol qoladi (boshqa kurslarda ham ishlatiladi).
     data: {
       lastRunAt: new Date(),
-      ...(rule.type === 'ONE_TIME' && !onlyEmployeeId && !onlyMaterialId ? { status: 'COMPLETED' as const } : {}),
+      ...(rule.type === 'ONE_TIME' && rule.scope === 'LOCAL' && !onlyEmployeeId && !onlyMaterialId
+        ? { status: 'COMPLETED' as const }
+        : {}),
     },
   });
   return { assigned, cancelled };

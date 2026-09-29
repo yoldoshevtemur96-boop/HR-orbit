@@ -4,6 +4,8 @@ import { Suspense, useCallback, useEffect, useState } from 'react';
 import Link from 'next/link';
 import { useSearchParams } from 'next/navigation';
 import { api } from '@/lib/api';
+import { useAuthStore } from '@/store/authStore';
+import { isLearningHr } from '@/lib/learningAdmin';
 import { BatchTable } from '@/components/learning-admin/BatchTable';
 import {
   ASSIGNMENT_SOURCE_LABEL,
@@ -32,6 +34,7 @@ export default function AssignmentsPage() {
 // tayinlov sahifasining ichida (/learning-admin/assignments/:id).
 function Batches() {
   const searchParams = useSearchParams();
+  const user = useAuthStore((s) => s.user);
   const [data, setData] = useState<BatchList | null>(null);
   const [materials, setMaterials] = useState<AssignableMaterial[]>([]);
   const [filters, setFilters] = useState({
@@ -76,12 +79,15 @@ function Batches() {
           <h1 className="font-display text-2xl font-semibold text-stone-900">Tayinlovlar</h1>
           <p className="mt-1 text-sm text-stone-500">Har bir tayinlov — bitta tayinlash amali. Xodimlar ro&apos;yxati uning ichida.</p>
         </div>
-        <Link
-          href="/learning-admin/assignments/new"
-          className="rounded-lg bg-accent px-4 py-2.5 text-sm font-semibold text-white transition hover:opacity-90"
-        >
-          + Yangi tayinlash
-        </Link>
+        {/* Tayinlash — materialsiz qoida sifatida yaratiladi, keyin istalgan kursda ishlatiladi */}
+        {isLearningHr(user?.role) && (
+          <Link
+            href="/learning-admin/rules/new"
+            className="rounded-lg bg-accent px-4 py-2.5 text-sm font-semibold text-white transition hover:opacity-90"
+          >
+            + Yangi tayinlash
+          </Link>
+        )}
       </div>
 
       {flash && <p className="rounded-md bg-emerald-50 px-3 py-2 text-sm text-emerald-800">{flash}</p>}
