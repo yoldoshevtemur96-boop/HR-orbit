@@ -1,9 +1,19 @@
 import axios from 'axios';
+import { resolveDemoFileUrl } from '@/mock/files';
+
+// Demo rejim: backend (Supabase/Postgres) ulanmagan holatda UI brauzer ichidagi
+// mock API bilan ishlaydi — ma'lumotlar localStorage'da saqlanadi.
+// Haqiqiy backendga ulanish uchun NEXT_PUBLIC_DEMO_MODE=false qo'ying.
+export const isDemoMode = process.env.NEXT_PUBLIC_DEMO_MODE !== 'false';
 
 // Backend API bilan bog'lanish uchun markazlashgan klient.
 // Har bir so'rovga localStorage'dagi access token avtomatik qo'shiladi.
 export const api = axios.create({
   baseURL: process.env.NEXT_PUBLIC_API_URL ?? 'http://localhost:4000/api',
+  ...(isDemoMode && {
+    // Mock API kodi faqat kerak bo'lganda yuklanadi
+    adapter: async (config) => (await import('@/mock/adapter')).demoAdapter(config),
+  }),
 });
 
 api.interceptors.request.use((config) => {
@@ -36,6 +46,9 @@ api.interceptors.response.use(
 // ularni API bazaviy manziliga qo'shamiz. Tashqi havolalar o'zgarmaydi.
 export function resolveFileUrl(url: string | null | undefined): string | null {
   if (!url) return null;
-  if (url.startsWith('/files/')) return `${api.defaults.baseURL}${url}`;
+  if (url.startsWith('/files/')) {
+    if (isDemoMode) return typeof window === 'undefined' ? null : resolveDemoFileUrl(url);
+    return `${api.defaults.baseURL}${url}`;
+  }
   return url;
 }

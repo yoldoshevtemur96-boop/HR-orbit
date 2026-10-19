@@ -2,8 +2,16 @@
 
 import { useState } from 'react';
 import { useRouter } from 'next/navigation';
-import { api } from '@/lib/api';
+import { api, isDemoMode } from '@/lib/api';
 import { useAuthStore } from '@/store/authStore';
+
+const DEMO_LOGINS = [
+  { email: 'ceo@demo.uz', label: 'HR-direktor' },
+  { email: 'hr@demo.uz', label: 'HR menejer' },
+  { email: 'boshliq@demo.uz', label: 'Departament rahbari' },
+  { email: 'tabelchi@demo.uz', label: 'Tabelchi' },
+  { email: 'xodim@demo.uz', label: 'Xodim' },
+];
 
 export default function LoginPage() {
   const router = useRouter();
@@ -80,8 +88,28 @@ export default function LoginPage() {
         </form>
 
         <div className="mt-8 rounded-lg border border-stone-200 bg-white p-4 text-xs text-stone-500">
-          <p className="mb-1 font-semibold text-stone-700">Demo hisoblar (parol: Password123!)</p>
-          <p>ceo@demo.uz · hr@demo.uz · boshliq@demo.uz · legal@demo.uz · xodim@demo.uz</p>
+          <p className="mb-2 font-semibold text-stone-700">Demo hisoblar (parol: Password123!)</p>
+          <div className="flex flex-wrap gap-1.5">
+            {DEMO_LOGINS.map((acc) => (
+              <button
+                key={acc.email}
+                type="button"
+                onClick={() => {
+                  setOrganizationSlug('demo');
+                  setEmail(acc.email);
+                  setPassword('Password123!');
+                }}
+                className="rounded-md border border-stone-200 px-2 py-1 text-stone-600 transition hover:border-accent hover:text-accent"
+              >
+                {acc.label}
+              </button>
+            ))}
+          </div>
+          {isDemoMode && (
+            <p className="mt-3 text-[11px] leading-relaxed text-stone-400">
+              Demo rejim: server ulanmagan, ma&apos;lumotlar shu brauzerda saqlanadi.
+            </p>
+          )}
         </div>
       </div>
 

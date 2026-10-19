@@ -10,6 +10,18 @@ HR platforma/
 └── frontend/          Next.js + TypeScript (keyingi bosqichda)
 ```
 
+## Demo rejim (backendsiz UI)
+
+Frontend standart holatda **demo rejimda** ishlaydi: backend va Supabase kerak emas.
+Barcha API so'rovlari brauzer ichidagi mock API'ga (`frontend/src/mock/`) yo'naltiriladi,
+ma'lumotlar `localStorage`'da saqlanadi va backend seed'iga mos boshlang'ich ma'lumotlar bilan to'ldiriladi
+(28 xodim, 5 bo'lim, 2 oylik davomat, arizalar, L&D materiallari).
+
+- Kirish: `demo` tashkiloti, istalgan demo hisob (`hr@demo.uz`, `xodim@demo.uz`, ...), parol `Password123!`
+- Ma'lumotlarni qayta tiklash: profil menyusi → "Demo ma'lumotlarni tiklash"
+- Haqiqiy backendga qaytish: Vercel'da `NEXT_PUBLIC_DEMO_MODE=false` qo'ying
+- Mock API tekshiruvi: `cd frontend && npx tsx scripts/demo-smoke.ts`
+
 ## Ishga tushirish (backend)
 
 ```bash

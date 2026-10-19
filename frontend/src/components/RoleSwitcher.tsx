@@ -2,7 +2,7 @@
 
 import { useRef, useState } from 'react';
 import { useRouter } from 'next/navigation';
-import { api } from '@/lib/api';
+import { api, isDemoMode } from '@/lib/api';
 import { useAuthStore } from '@/store/authStore';
 import { roleLabel } from '@/lib/roleLabels';
 import type { RoleName } from '@/types/auth';
@@ -104,6 +104,20 @@ export function RoleSwitcher() {
             ))}
             {error && <p className="mx-3 mt-1 rounded-md bg-rose-50 px-2 py-1.5 text-xs text-rose-700">{error}</p>}
             <div className="my-1.5 border-t border-stone-100" />
+            {isDemoMode && (
+              <button
+                type="button"
+                onClick={async () => {
+                  if (!window.confirm("Demo ma'lumotlar boshlang'ich holatga qaytarilsinmi? Kiritilgan o'zgarishlar o'chadi.")) return;
+                  const { resetDb } = await import('@/mock/store');
+                  resetDb();
+                  window.location.reload();
+                }}
+                className="flex w-full items-center px-3 py-2 text-left text-sm text-stone-600 transition hover:bg-stone-50"
+              >
+                Demo ma&apos;lumotlarni tiklash
+              </button>
+            )}
             <button
               type="button"
               onClick={() => {
